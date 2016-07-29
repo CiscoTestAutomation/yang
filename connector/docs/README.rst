@@ -17,7 +17,7 @@ Features
 * NETCONF over SSH (RFC 6242) including Chunked Framing Mechanism
 * pyATS compliant
 
-  This module is fully integrated into pyATS. Starting from pyATS 3.0, the introduction
+  This module is fully integrated into pyATS. Starting from pyATS 3.1.0, the introduction
   of pyATS Connection Manager allows us to establish Netconf connections
   seamlessly in pyATS topology model. More details of Connection Manager can be
   found in
@@ -30,7 +30,7 @@ Restconf with integration of new
 `Genie <http://wwwin-pyats.cisco.com/cisco-shared/genie/latest/>`_
 and
 `Metaparser <http://wwwin-pyats.cisco.com/cisco-shared/metaparser/latest/>`_
-model - Lubna.
+model.
 
 Comparison to Other Netconf Clients
 -----------------------------------
