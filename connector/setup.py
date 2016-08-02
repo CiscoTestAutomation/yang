@@ -103,7 +103,6 @@ class BuildAndPreviewDocsCommand(Command):
 
 def read(*paths):
     '''read and return txt content of file'''
-    print(*paths)
     with open(os.path.join(os.path.dirname(__file__), *paths)) as fp:
         return fp.read()
 
