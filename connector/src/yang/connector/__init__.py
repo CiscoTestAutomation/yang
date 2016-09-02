@@ -59,6 +59,9 @@ class Netconf(manager.Manager, BaseConnection):
         connection_info['host'] = str(connection_info.pop('ip'))
         # remove class
         connection_info.pop('class')
+        # remove model xml file
+        if 'model' in connection_info:
+            connection_info.pop('model')
 
         try:
             self.session.connect(**connection_info)
