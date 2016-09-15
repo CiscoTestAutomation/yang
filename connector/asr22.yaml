@@ -1,0 +1,12 @@
+devices:
+    asr22:
+        type: ASR1k
+        os: IOSXE
+        connections:
+            netconf:
+                class: yang.netconf.Netconf
+                ip: 10.85.72.157
+                port: 830
+                username: admin
+                password: admin
+                hostkey_verify: False

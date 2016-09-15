@@ -1,14 +1,3 @@
-"""yang.connector module defines a set of classes that connect to Data Model
-Interfaces (DMI), in particular, an implementation of Netconf client. Restconf
-implementation is coming next."""
-
-# metadata
-__version__ = '2.0.0'
-__author__ = ('Jonathan Yang <yuekyang@cisco.com>',
-              'Siming Yuan <siyuan@cisco.com',)
-__contact__ = 'yang-python@cisco.com'
-__copyright__ = 'Cisco Systems, Inc. Cisco Confidential'
-
 
 import re
 import logging
@@ -44,8 +33,7 @@ class Netconf(manager.Manager, BaseConnection):
         # instanciate ncclient Manager
         # (can't use super due to mro change)
         manager.Manager.__init__(self, session = session,
-                                       device_handler = device_handler, 
-                                       *args, **kwargs)
+                                       device_handler = device_handler)
 
     @property
     def session(self):
@@ -59,9 +47,6 @@ class Netconf(manager.Manager, BaseConnection):
         connection_info['host'] = str(connection_info.pop('ip'))
         # remove class
         connection_info.pop('class')
-        # remove model xml file
-        if 'model' in connection_info:
-            connection_info.pop('model')
 
         try:
             self.session.connect(**connection_info)
@@ -70,8 +55,7 @@ class Netconf(manager.Manager, BaseConnection):
                 self.session.close()
             raise
 
-        # documentation for connect() from SSHSession
-        # -------------------------------------------
+        # documentation
         # def connect(self, host, port=830, timeout=None, 
         #                unknown_host_cb=default_unknown_host_cb,
         #                username=None, password=None, key_filename=None, allow_agent=True,
@@ -130,11 +114,6 @@ class Netconf(manager.Manager, BaseConnection):
                      device_handler = self._device_handler,
                      timeout = timeout)
         return rpc.request(msg)
-
-    def __getattr__(self, attr):
-        # avoid the __getattr__ from Manager class
-        raise AttributeError("'%s' object has no attribute '%s'" 
-                             % (self.__class__.__name__, attr))
 
 
 class RawRPC(operations.rpc.RPC):
