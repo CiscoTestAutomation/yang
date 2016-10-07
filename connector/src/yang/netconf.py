@@ -108,15 +108,20 @@ class Netconf(manager.Manager, BaseConnection):
 
         return super().execute(cls, *args, **kwargs)
 
-    def request(self, msg, timeout=10):
+    def request(self, msg, timeout=10, raw = True):
 
         rpc = RawRPC(session = self.session, 
                      device_handler = self._device_handler,
-                     timeout = timeout)
+                     timeout = timeout,
+                     raw = raw)
         return rpc.request(msg)
 
 
 class RawRPC(operations.rpc.RPC):
+
+    def __init__(self, *args, raw, **kwargs):
+        if raw:
+            self.REPLY_CLS=str
 
     def _wrap(self, op):
         return re.sub(r'message-id="([A-Za-z0-9_\-:]+)"',
@@ -124,4 +129,4 @@ class RawRPC(operations.rpc.RPC):
                     op)
 
     def request(self, op):
-        return self._request(op).xml
+        return self._request(op)
