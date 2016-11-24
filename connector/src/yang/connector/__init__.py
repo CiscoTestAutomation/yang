@@ -726,9 +726,9 @@ class Netconf(BaseConnection):
                             str_buffer += msg[ret.end():msg_end]
                             msg = msg[msg_end:]
                             msg_len = len(msg)
-                            if msg == '\n##\n':
-                                msg = ''
-                                msg_len = 0
+                            if msg[:4] == '\n##\n':
+                                msg = msg[4:]
+                                msg_len = len(msg)
                         else:
                             return None
                 else:
