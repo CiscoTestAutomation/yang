@@ -25,7 +25,7 @@
 PKG_NAME      = yang.connector
 PKG_PATH      = yang/connector
 BUILDDIR      = $(shell pwd)/__build__
-PROD_USER     = yang-python@cisco.com
+PROD_USER     = pyadm@pyats-ci 
 PROD_PKGS     = /auto/pyats/packages/cisco-shared
 PYTHON        = python
 TESTCMD       = cd tests; runAll
