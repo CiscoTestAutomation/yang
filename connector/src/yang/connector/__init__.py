@@ -1,48 +1,66 @@
 """yang.connector module defines a set of classes that connect to Data Model
-Interfaces (DMI), in particular, an implementation of Netconf client. Restconf
-implementation is coming next."""
+Interfaces (DMI), in particular, an implementation of Netconf client by
+wrapping up ncclient package. Restconf implementation is coming next."""
 
 # metadata
-__version__ = '1.0.0'
-__author__ = 'Jonathan Yang <yuekyang@cisco.com>'
+__version__ = '2.0.0'
+__author__ = ('Jonathan Yang <yuekyang@cisco.com>',
+              'Siming Yuan <siyuan@cisco.com',)
 __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc. Cisco Confidential'
 
-import paramiko
-import socket
-import time
+
 import re
+import time
 import logging
+from ncclient import manager
+from ncclient import operations
+from ncclient import transport
+from ncclient.devices.default import DefaultDeviceHandler
+
 from ats.connections import BaseConnection
 
-# create a LOGGER for this module
-LOGGER = logging.getLogger(__name__)
+# create a logger for this module
+logger = logging.getLogger(__name__)
 
-
-# with a device object
-# device.connect(alias='nc', via='netconf')
-class Netconf(BaseConnection):
+class Netconf(manager.Manager, BaseConnection):
     '''Netconf
 
     Implementation of NetConf connection to devices (NX-OS, IOS-XR or IOS-XE),
-    based on pyATS BaseConnection, allowing script servers to connect to end
-    routers or swithes via NetConf protocol.
+    based on pyATS BaseConnection and ncclient.
 
     YAML Example::
 
-        connections:
-            netconf:
-                class: yang.connector.Netconf
-                protocol : netconf
-                ip : "1.2.3.4"
-                port: 830
-                user: admin
-                password: admin
+        devices:
+            asr22:
+                type: 'ASR'
+                tacacs:
+                    login_prompt: "login:"
+                    password_prompt: "Password:"
+                    username: "admin"
+                passwords:
+                    tacacs: admin
+                    enable: admin
+                    line: admin
+                connections:
+                    a:
+                        protocol: telnet
+                        ip: "1.2.3.4"
+                        port: 2004
+                    vty:
+                        protocol : telnet
+                        ip : "2.3.4.5"
+                    netconf:
+                        class: yang.connector.Netconf
+                        ip : "2.3.4.5"
+                        port: 830
+                        username: admin
+                        password: admin
 
     Code Example::
 
         >>> from ats.topology import loader
-        >>> testbed = loader.load('/users/xxx/xxx/asr_20_22.yaml')
+        >>> testbed = loader.load('/users/xxx/xxx/asr22.yaml')
         >>> device = testbed.devices['asr22']
         >>> device.connect(alias='nc', via='netconf')
         >>> device.nc.connected
@@ -52,7 +70,7 @@ class Netconf(BaseConnection):
         ...      xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
         ...     <get>
         ...     <filter>
-        ...     <native xmlns="urn:ios">
+        ...     <native xmlns="http://cisco.com/ns/yang/ned/ios">
         ...     <version>
         ...     </version>
         ...     </native>
@@ -64,8 +82,9 @@ class Netconf(BaseConnection):
         >>> print(reply)
         <?xml version="1.0" encoding="UTF-8"?>
         <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-        message-id="101"><data><native xmlns="urn:ios"><version>16.2</version>
-        </native></data></rpc-reply>
+        message-id="101"><data>
+        <native xmlns="http://cisco.com/ns/yang/ned/ios">
+        <version>16.3</version></native></data></rpc-reply>
         >>> device.nc.disconnect()
         >>> device.nc.connected
         False
@@ -73,117 +92,101 @@ class Netconf(BaseConnection):
 
     Attributes
     ----------
-    bufsize : `int`
-        When paramiko channel method sendall is called, maximum self.bufsize
-        bytes are sent at a time. By default, 16384 bytes is set and it
-        works well in most cases. After a successful connection, users can
-        retrieve or modify this value from attribute self.bufsize.
-
     timeout : `int`
         Timeout value in seconds which is used by paramiko channel. By
-        default this value is 10 seconds. After a successful connection,
-        users can retrieve this value from attribute self.timeout.
+        default this value is 30 seconds.
 
-    framing : `string`
-        After connection, attribute self.framing will contain the highest
-        version of Chunked Framing Mechanism. "1.0" means
-        ``urn:ietf:params:netconf:base:1.0`` and "1.1" refers to
-        ``urn:ietf:params:netconf:base:1.1``.
+    client_capabilities : `object`
+        Object ncclient.capabilities.Capabilities representing the client’s
+        capabilities.
 
-    capabilities : `string`
-        After connection, attribute self.capabilities contains capabilities
-        infomation received from the device, and it has a list of data models
-        that the device supports.
+    server_capabilities : `object`
+        Object ncclient.capabilities.Capabilities representing the server’s
+        capabilities, and it has a list of data models the server supports.
 
-    last_reply_time : `int`
-        Attribute self.last_reply_time records time measurement from sending
-        out the message to receiving a reply (in seconds), and it is set by
-        method request().
+    async_mode : `boolean`
+        Specify whether operations are executed asynchronously (True) or
+        synchronously (False). The default value is False.
     '''
-
 
     def __init__(self, *args, **kwargs):
         '''
         __init__ instantiates a single connection instance.
-
-        Parameters
-        ----------
-
-        bufsize : `int`, optional
-            An optional keyed argument to set buffer size value in bytes. When
-            paramiko channel method sendall is called, maximum self.bufsize
-            bytes are sent at a time. By default, 16384 bytes is set and it
-            works well in most cases. After a successful connection, users can
-            retrieve this value from attribute self.bufsize.
-        timeout : `int`, optional
-            An optional keyed argument to set timeout value in seconds. By
-            default this value is 10 seconds. After a successful connection,
-            users can retrieve this value from attribute self.timeout.
         '''
 
-        # instanciate parent BaseConnection
-        super().__init__(*args, **kwargs)
+        # instanciate BaseConnection
+        # (could use super...)
+        BaseConnection.__init__(self, *args, **kwargs)
 
-        # check attribute connection_info is ready from class BaseConnection
-        if hasattr(self, 'connection_info'):
-            for key in ['class', 'protocol', 'ip', 'port', 'user', 'password']:
-                if key not in self.connection_info:
-                    raise Exception('''%s not defined in the YAML file, e.g.:
-                                    netconf:
-                                        class: yang.connector.Netconf
-                                        protocol : netconf
-                                        ip : "1.2.3.4"
-                                        port: 830
-                                        user: admin
-                                        password: admin''' % key)
-            if self.connection_info['protocol'] != 'netconf':
-                raise Exception('wrong protocol defined in the YAML file. '
-                                'Should be "netconf" but got "%s"'
-                                % self.connection_info['protocol'])
-        else:
-            raise Exception('attribute connection_info does not exist. '
-                            'Something in BaseConnection is wrong')
+        # shortwire Ncclient device handling portion
+        # and create just the DeviceHandler
+        device_handler = DefaultDeviceHandler()
 
-        # let's initialize some variables
-        if 'bufsize' in kwargs:
-            self.bufsize = kwargs['bufsize']
-        else:
-            self.bufsize = 16384
-        if 'timeout' in kwargs:
-            self.timeout = kwargs['timeout']
-        else:
-            self.timeout = 10
-        self.socket = None
-        self.ssh = None
-        self.channel = None
-        self.framing = '1.0'
-        self.capabilities = ''
-        self.last_reply_time = 0.0
-        self.name = self.device.name
+        # create the session instance
+        session = transport.SSHSession(device_handler)
 
-    @BaseConnection.locked
+        # load known_hosts file (if available)
+        session.load_known_hosts()
+
+        # instanciate ncclient Manager
+        # (can't use super due to mro change)
+        manager.Manager.__init__(self, session = session,
+                                       device_handler = device_handler,
+                                       *args, **kwargs)
+
+    @property
+    def session(self):
+        '''session
+
+        High-level api: return the SSH session object.
+
+        Returns
+        -------
+
+        object
+            The SSH session that was created by ncclient.transport.SSHSession.
+        '''
+
+        return self._session
+
     def connect(self):
         '''connect
 
-        high-level api: opens the NetConf connection and exchanges
-        capabilities. After connection, attribute self.framing will contain the
-        highest version of Chunked Framing Mechanism (either
-        urn:ietf:params:netconf:base:1.0 or 1.1), and self.capabilities
-        contains capabilities infomation received from the device.
+        High-level api: opens the NetConf connection and exchanges
+        capabilities. Since topology YAML file is parsed by BaseConnection,
+        the following parameters can be specified in your YAML file.
 
         Parameters
         ----------
 
-        bufsize : `int`, optional
-            An optional keyed argument to set buffer size value in bytes. When
-            paramiko channel method sendall is called, maximum self.bufsize
-            bytes are sent at a time. By default, 16384 bytes is set and it
-            works well in most cases. After a successful connection, users can
-            retrieve this value from attribute self.bufsize.
+        host : `string`
+            Hostname or IP address to connect to.
+        port : `int`, optional
+            By default port is 830, but some devices use the default SSH port
+            of 22 so this may need to be specified.
         timeout : `int`, optional
             An optional keyed argument to set timeout value in seconds. By
-            default this value is 10 seconds. After a successful connection,
-            users can retrieve this value from attribute self.timeout.
+            default this value is 30 seconds.
+        username : `string`
+            The username to use for SSH authentication.
+        password : `string`
+            The password used if using password authentication, or the
+            passphrase to use for unlocking keys that require it.
+        key_filename : `string`
+            a filename where a the private key to be used can be found.
+        allow_agent : `boolean`
+            Enables querying SSH agent (if found) for keys. The default value
+            is True.
+        hostkey_verify : `boolean`
+            Enables hostkey verification from ~/.ssh/known_hosts. The default
+            value is False.
+        look_for_keys : `boolean`
+            Enables looking in the usual locations for ssh keys
+            (e.g. ~/.ssh/id_*). The default value is True.
+        ssh_config : `string`
+            Enables parsing of an OpenSSH configuration file, if set to its
+            path, e.g. ~/.ssh/config or to True. If the value is True,
+            ncclient uses ~/.ssh/config. The default value is None.
 
         Raises
         ------
@@ -191,7 +194,7 @@ class Netconf(BaseConnection):
         Exception
             If the YAML file does not have correct connections section, or
             establishing transport to ip:port is failed, ssh authentication is
-            failed, or unknown NetConf framing mechanism version is received.
+            failed, or other transport failures.
 
         Note
         ----
@@ -200,10 +203,38 @@ class Netconf(BaseConnection):
         exception will be raised.
 
 
-        Example::
+        YAML Example::
+
+            devices:
+                asr22:
+                    type: 'ASR'
+                    tacacs:
+                        login_prompt: "login:"
+                        password_prompt: "Password:"
+                        username: "admin"
+                    passwords:
+                        tacacs: admin
+                        enable: admin
+                        line: admin
+                    connections:
+                        a:
+                            protocol: telnet
+                            ip: "1.2.3.4"
+                            port: 2004
+                        vty:
+                            protocol : telnet
+                            ip : "2.3.4.5"
+                        netconf:
+                            class: yang.connector.Netconf
+                            ip : "2.3.4.5"
+                            port: 830
+                            username: admin
+                            password: admin
+
+        Code Example::
 
             >>> from ats.topology import loader
-            >>> testbed = loader.load('/users/xxx/xxx/asr_20_22.yaml')
+            >>> testbed = loader.load('/users/xxx/xxx/asr22.yaml')
             >>> device = testbed.devices['asr22']
             >>> device.connect(alias='nc', via='netconf')
             >>>
@@ -212,156 +243,138 @@ class Netconf(BaseConnection):
 
             >>> device.nc.connected
             True
-            >>> device.nc.framing
-            '1.1'
-            >>> device.nc.capabilities
-            '<?xml version="1.0" encoding="UTF-8"?><hello>...</hello>'
+            >>> for iter in device.nc.server_capabilities:
+            ...     print(iter)
+            ...
+            urn:ietf:params:xml:ns:yang:smiv2:RFC-1215?module=RFC-1215
+            urn:ietf:params:xml:ns:yang:smiv2:SNMPv2-TC?module=SNMPv2-TC
+            ...
             >>>
         '''
 
-        # check if already connected
         if self.connected:
-            LOGGER.info('NetConf is already connected to %s' % self.name)
             return
 
-        # setup ssh transport
-        address_list = socket.getaddrinfo(
-            str(self.connection_info['ip']),
-            self.connection_info['port'],
-            family=socket.AF_INET,
-            type=socket.SOCK_STREAM)
-        for address in address_list:
-            family, addr_type, protocol, canon_name, sock_addr = address
-            try:
-                skt = socket.socket(family, addr_type, protocol)
-            except socket.error:
-                skt = None
-                continue
-            skt.settimeout(self.timeout)
-            try:
-                skt.connect(sock_addr)
-            except socket.error:
-                skt.close()
-                skt = None
-                continue
-            break
-        if skt is None:
-            raise Exception('Failed to establish transport to %s:%s'
-                            % (str(self.connection_info['ip']),
-                               self.connection_info['port']))
-        else:
-            self.socket = skt
-        self.ssh = paramiko.Transport(self.socket)
+        logger.debug(self.session)
+        if not self.session.is_alive():
+            self._session = transport.SSHSession(self._device_handler)
 
-        # setup ssh channel
+        # get all connection information
+        connection_info = self.connection_info.copy()
+
+        # rename ip -> host, cast to str type
+        connection_info['host'] = str(connection_info.pop('ip'))
+
+        # rename user -> username
+        if 'user' in connection_info:
+            connection_info['username'] = str(connection_info.pop('user'))
+
+        # remove class
+        connection_info.pop('class')
+
+        # remove model xml file
+        if 'model' in connection_info:
+            connection_info.pop('model')
+
+        # remove protocol
+        if 'protocol' in connection_info:
+            connection_info.pop('protocol')
+
+        # add hostkey_verify if not exist
+        if 'hostkey_verify' not in connection_info:
+            connection_info['hostkey_verify'] = False
+
         try:
-            self.ssh.connect(
-                hostkey=None,
-                username=self.connection_info['user'],
-                password=self.connection_info['password'])
-        except paramiko.AuthenticationException:
-            raise Exception('Authentication failed when connecting to %s:%s'
-                            % (str(self.connection_info['ip']),
-                               self.connection_info['port']))
+            self.session.connect(**connection_info)
+        except Exception:
+            if self.session.transport:
+                self.session.close()
+            raise
 
-        self.channel = self.ssh.open_session()
-        self.channel.invoke_subsystem('netconf')
-        self.channel.settimeout(self.timeout)
-
-        # send hello and parse capabilities
-        hello = """
-            <?xml version="1.0" encoding="utf-8"?>
-            <hello xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-              <capabilities>
-                <capability>urn:ietf:params:netconf:base:1.0</capability>
-                <capability>urn:ietf:params:netconf:base:1.1</capability>
-              </capabilities>
-            </hello>
-            """
-        msg = self.request(hello)
-        self.capabilities = msg
-        if re.search('urn:ietf:params:netconf:base:1.1', msg):
-            self.framing = '1.1'
-        elif re.search('urn:ietf:params:netconf:base:1.0', msg):
-            self.framing = '1.0'
-        else:
-            raise Exception('Unknown NetConf framing mechanism version: %s'
-                            % self.capabilities)
-        LOGGER.info('NetConf is connected to %s' % self.name)
-
-    @BaseConnection.locked
     def disconnect(self):
         '''disconnect
 
-        high-level api: closes the NetConf session.
-
-        Note
-        ----
-
-        There is no parameter or return of this method.
-
-
-        Example::
-
-            >>> from ats.topology import loader
-            >>> testbed = loader.load('/users/xxx/xxx/asr_20_22.yaml')
-            >>> device = testbed.devices['asr22']
-            >>> device.connect(alias='nc', via='netconf')
-            >>> device.nc.connected
-            True
-            >>> device.nc.disconnect()
-            >>>
-
-        Expected Results::
-
-            >>> device.nc.connected
-            False
-            >>> device.nc.framing
-            '1.0'
-            >>> device.nc.capabilities
-            ''
-            >>>
-
-
+        High-level api: closes the NetConf connection.
         '''
 
-        if self.channel is not None:
-            self.channel.close()
-            self.channel = None
-        if self.ssh is not None:
-            self.ssh.close()
-            self.ssh = None
-        if self.socket is not None:
-            self.socket.close()
-            self.socket = None
-        self.framing = '1.0'
-        self.capabilities = ''
+        self.session.close()
 
-    @BaseConnection.locked
-    def request(self, msg, timeout=10):
+    def configure(self, msg):
+        '''configure
+
+        High-level api: configure is a common method of console, vty and ssh
+        sessions, however it is not supported by this Netconf class. This is
+        just a placeholder in case someone mistakenly calls config method in a
+        netconf session. An Exception is thrown out with explanation.
+
+        Parameters
+        ----------
+
+        msg : `str`
+            Any config CLI need to be sent out.
+
+        Raises
+        ------
+
+        Exception
+            configure is not a supported method of this Netconf class.
+        '''
+
+        raise Exception('configure is not a supported method of this Netconf '
+                        'class, since a more suitable method, edit_config, is '
+                        'recommended. There are nine netconf operations '
+                        'defined by RFC 6241, and edit-config is one of them. '
+                        'Also users can build any netconf requst, including '
+                        'invalid netconf requst as negative test cases, in '
+                        'XML format and send it by method request.')
+
+    def execute(self, operation, *args, **kwargs):
+        '''execute
+
+        High-level api: The fact that most connection classes implement
+        execute method lead us to add this method here as well.
+        Supported operations are get, get_config, get_schema, dispatch,
+        edit_config, copy_config, validate, commit, discard_changes,
+        delete_config, lock, unlock, close_session, kill_session,
+        poweroff_machine and reboot_machine. Refer to ncclient document for
+        more details.
+        '''
+
+        # allow for operation string type
+        if type(operation) is str:
+            try:
+                cls = manager.OPERATIONS[operation]
+            except KeyError:
+                raise ValueError('No such operation "%s".\n'
+                                 'Supported operations are: %s' %
+                                 (operation, list(manager.OPERATIONS.keys())))
+        else:
+            cls = operation
+
+        return super().execute(cls, *args, **kwargs)
+
+    def request(self, msg, timeout=30):
         '''request
 
-        high-level api: sends message through NetConf session and returns with
-        a reply. Exception will be thrown out either the reply is in wrong
+        High-level api: sends message through NetConf session and returns with
+        a reply. Exception is thrown out either the reply is in wrong
         format or timout. Users can modify timeout value (in seconds) by
-        setting variable self.timeout. Variable self.last_reply_time records
-        time measurement from sending out the message to receiving a reply (in
-        seconds). Timeout default value is 10 seconds but it can be temporarily
-        changed by passing an optional argument timeout=<seconds>, i.e.,
-        self.timeout will be changed back to original self.timeout value
-        after this call is done. Users may want to make a large query that
-        requires a larger timeout.
+        passing parameter timeout. Users may want to set a larger timeout when
+        making a large query.
 
         Parameters
         ----------
 
         msg : `str`
             Any message need to be sent out in XML format. The message can be
-            in wrong format if it is a negative test case.
+            in wrong format if it is a negative test case. Because ncclient
+            tracks same message-id in both rpc and rpc-reply, missing
+            message-id in your rpc may cause exception when receiving
+            rpc-reply. Most other wrong format rpc's can be sent without
+            exception.
         timeout : `int`, optional
-            An optional keyed argument to set timeout value in seconds. This is
-            a temporarily change. The self.timeout value will be set to
-            original self.timeout when this call is done.
+            An optional keyed argument to set timeout value in seconds. Its
+            default value is 30 seconds.
 
         Returns
         -------
@@ -379,7 +392,7 @@ class Netconf(BaseConnection):
             reply.
 
 
-        Example::
+        Code Example::
 
             >>> from ats.topology import loader
             >>> testbed = loader.load('/users/xxx/xxx/asr_20_22.yaml')
@@ -390,7 +403,7 @@ class Netconf(BaseConnection):
             ...      xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
             ...     <get>
             ...     <filter>
-            ...     <native xmlns="urn:ios">
+            ...     <native xmlns="http://cisco.com/ns/yang/ned/ios">
             ...     <version>
             ...     </version>
             ...     </native>
@@ -406,334 +419,71 @@ class Netconf(BaseConnection):
             >>> print(reply)
             <?xml version="1.0" encoding="UTF-8"?>
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-            message-id="101"><data><native xmlns="urn:ios">
-            <version>16.2</version></native></data></rpc-reply>
+            message-id="101"><data>
+            <native xmlns="http://cisco.com/ns/yang/ned/ios">
+            <version>16.3</version></native></data></rpc-reply>
             >>>
         '''
 
-        # check if already connected
-        if not self.connected:
-            raise Exception('NetConf is not connected')
+        rpc = RawRPC(session = self.session,
+                     device_handler = self._device_handler,
+                     async = False,
+                     timeout = timeout,
+                     raise_mode = operations.rpc.RaiseMode.NONE)
 
-        # set timeout temporarily
-        if timeout != 10:
-            original_timeout = self.timeout
-            self.timeout = timeout
-            self.channel.settimeout(timeout)
+        # identify message-id
+        m = re.search(r'message-id="([A-Za-z0-9_\-:# ]*)"', msg)
+        if m:
+            rpc._id = m.group(1)
+            rpc._listener.register(rpc._id, rpc)
+            logger.debug('Found message-id="%s" in your rpc, which is good.', rpc._id)
+        else:
+            logger.warning('Cannot find message-id in your rpc. You may '
+                           'expect an exception when receiving rpc-reply '
+                           'due to missing message-id.')
 
-        # send and receive
+        return rpc._request(msg).xml
+
+    def __getattr__(self, attr):
+        # avoid the __getattr__ from Manager class
+        raise AttributeError("'%s' object has no attribute '%s'" 
+                             % (self.__class__.__name__, attr))
+
+class RawRPC(operations.rpc.RPC):
+    '''RawRPC
+
+    A modified ncclient.operations.rpc.RPC class. This is for internal use
+    only.
+    '''
+
+    def _request(self, msg):
+        '''_request
+
+        Override method _request in class ncclient.operations.RPC, so it can
+        handle raw rpc requests in string format without validating your rpc
+        request syntax. When your rpc-reply is received, in most cases, it
+        simply returns rpc-reply again in string format, except one scenario:
+        If message-id is missing or message-id received does not match that in
+        rpc request, ncclient will raise an OperationError.
+        '''
+
+        logger.debug('Requesting %r' % self.__class__.__name__)
+        logger.info('Sending rpc...')
+        logger.info(msg)
         time1 = time.time()
-        self.send(msg)
-        reply = self.receive()
-        time2 = time.time()
-        self.last_reply_time = "{:.3f}".format(time2 - time1)
-        LOGGER.info('Got NetConf reply from %s in %s sec' %
-                    (self.name, self.last_reply_time))
-
-        # set timeout back
-        if timeout != 10:
-            self.timeout = original_timeout
-            self.channel.settimeout(original_timeout)
-
-        return reply
-
-    @property
-    def connected(self):
-        '''connected
-
-        high-level api: checks whether NetConf connection is connected.
-
-        Returns
-        -------
-
-        bool
-            True or False that indicates whether the channel exists.
-
-
-        Example::
-
-            >>> from ats.topology import loader
-            >>> testbed = loader.load('/users/xxx/xxx/asr_20_22.yaml')
-            >>> device = testbed.devices['asr22']
-            >>> device.connect(alias='nc', via='netconf')
-            >>> device.nc.connected
-            True
-            >>>
-        '''
-
-        if self.channel is None:
-            return False
-        else:
-            return True
-
-    @BaseConnection.locked
-    def configure(self, msg):
-        '''configure
-
-        high-level api: configure is a common method of console, vty and ssh
-        sessions, however it is not supported by this Netconf class. This is
-        just a placeholder in case someone mistakenly calls config method in a
-        netconf session. An Exception will be thrown out with explanation.
-
-        Parameters
-        ----------
-
-        msg : `str`
-            Any config CLI need to be sent out.
-
-        Raises
-        ------
-
-        Exception
-            config is not a supported method of this Netconf class.
-        '''
-
-        raise Exception('configure is not a supported method of this Netconf '
-                        'class, since a more flexible method, request, is '
-                        'recommanded. There are nine netconf operations '
-                        'defined by RFC 6241, and edit-config is only one of '
-                        'them. Users can build any netconf requst, including '
-                        'invalid netconf requst as negative test cases, in '
-                        'XML format and send it by method request.')
-
-    @BaseConnection.locked
-    def execute(self, msg):
-        '''execute
-
-        high-level api: execute is a common method of console, vty and ssh
-        sessions, however it is not supported by this Netconf class. This is
-        just a placeholder in case someone mistakenly calls execute method in a
-        netconf session. An Exception will be thrown out with explanation.
-
-        Parameters
-        ----------
-
-        msg : `str`
-            Any exec commands need to be sent out.
-
-        Raises
-        ------
-
-        Exception
-            execute is not a supported method of this Netconf class.
-        '''
-
-        raise Exception('execute is not a supported method of this Netconf '
-                        'class, since a more flexible method, request, is '
-                        'recommanded. There are nine netconf operations '
-                        'defined by RFC 6241. get and get-config are only two '
-                        'of them. Users can build any netconf requst, '
-                        'including invalid netconf requst as negative test '
-                        'cases, in XML format and send it by method request.')
-
-    @BaseConnection.locked
-    def send(self, msg):
-        '''send
-
-        public low-level api: sends request through NetConf session.
-
-        Parameters
-        ----------
-
-        msg : `str`
-            Any message need to be sent out in XML format. The message can be
-            in wrong format if it is a negative test case.
-
-        Raises
-        ------
-
-        Exception
-            If NetConf is not connected, or an unknown NetConf framing
-            mechanism version is set in the object.
-
-        Note
-        ----
-
-        There is no return from this method. If something goes wrong, an
-        exception will be raised.
-        '''
-
-        # check if already connected
-        if not self.connected:
-            raise Exception('NetConf is not connected')
-
-        if self.framing == '1.0':
-            self._send(msg + ']]>]]>')
-        elif self.framing == '1.1':
-            self._send('\n#%d\n' % len(msg) + msg + '\n##\n')
-        else:
-            raise Exception('Unknown NetConf framing mechanism version %s'
-                            % self.framing)
-
-    @BaseConnection.locked
-    def receive(self):
-        '''receive
-
-        public low-level api: receives message from the NetConf session until
-        all data are read. Exception will be thrown out either the reply is in
-        wrong format or timout. Users can modify timeout value (in seconds) by
-        setting variable self.timeout.
-
-        Returns
-        -------
-
-        str
-            The reply from the device in string.
-
-        Raises
-        ------
-
-        Exception
-            If NetConf is not connected, or there is a timeout when receiving
-            reply.
-        '''
-
-        # check if already connected
-        if not self.connected:
-            raise Exception('NetConf is not connected')
-
-        # try to receive from the NetConf session
-        timeout = time.time() + self.timeout
-        str_buffer = ''
-        while time.time() < timeout:
-            if self.channel.recv_ready():
-                str_buffer += self._receive()
-                str_ret = self._validate(str_buffer)
-                if str_ret is not None:
-                    return str_ret
-            time.sleep(0.1)
-        raise Exception('Timeout when receiving message from the NetConf '
-                        'session. This is what we have received so far: "%s"'
-                        % str_buffer)
-
-    @BaseConnection.locked
-    def _send(self, msg):
-        '''_send
-
-        low-level api: sends message through NetConf session. Exception will be
-        thrown out if there is socket issues.
-
-        Parameters
-        ----------
-
-        msg : `str`
-            Any message need to be sent out through the channel.
-
-        Raises
-        ------
-
-        Exception
-            If NetConf is not connected, or there is a socket error when
-            sending the message.
-
-        Note
-        ----
-
-        There is no return from this method. If something goes wrong, an
-        exception will be raised.
-        '''
-
-        # check if already connected
-        if not self.connected:
-            raise Exception('NetConf is not connected')
-
-        try:
-            # send message in batchs. The size of one batch is defined in
-            # self.bufsize.
-            if len(msg) < self.bufsize:
-                self.channel.sendall(msg)
+        self._session.send(msg)
+        if not self._async:
+            logger.debug('Sync request, will wait for timeout=%r' %
+                         self._timeout)
+            self._event.wait(self._timeout)
+            if self._event.isSet():
+                time2 = time.time()
+                reply_time = "{:.3f}".format(time2 - time1)
+                logger.info('Receiving rpc-reply after {} sec...'.
+                            format(reply_time))
+                logger.info(self._reply)
+                return self._reply
             else:
-                while msg:
-                    self.channel.sendall(msg[:self.bufsize])
-                    msg = msg[self.bufsize:]
-        except socket.error:
-            raise Exception('Socket error when sending message to %s:%s'
-                            % (str(self.connection_info['ip']),
-                               self.connection_info['port']))
-
-    @BaseConnection.locked
-    def _receive(self):
-        '''_receive
-
-        low-level api: receives message from the NetConf session until all data
-        are read. Exception socket.timeout could be raised if no data is ready.
-
-        Returns
-        -------
-
-        str
-            The reply from the device in string. This reply is a direct decode
-            from data received on channel.
-
-        Raises
-        ------
-
-        Exception
-            If NetConf is not connected, or there is a timeout when receiving
-            reply.
-        '''
-
-        # check if already connected
-        if not self.connected:
-            raise Exception('NetConf is not connected')
-
-        str_buffer = ''
-        while self.channel.recv_ready():
-            str_buffer += self.channel.recv(self.bufsize).decode('utf-8')
-        return str_buffer
-
-    @BaseConnection.locked
-    def _validate(self, msg):
-        '''_validate
-
-        low-level api: validates receiving message against RFC 6242. The method
-        returns None if input message is invalid. Otherwise, non-None is
-        returned, which is a string.
-
-        Parameters
-        ----------
-
-        msg : `str`
-            A message received from the channel, which is required to be
-            verified against RFC 6242.
-
-        Returns
-        -------
-
-        str or None
-            None if the message is invalid. Otherwise, the message is returned
-            with the version-specific framing removed.
-
-        '''
-
-        msg_len = len(msg)
-        str_buffer = ''
-        if self.framing == '1.0':
-            if msg_len > 6 and msg[msg_len - 6:] == ']]>]]>':
-                str_buffer = msg[:msg_len - 6]
-                return str_buffer
-            else:
-                return None
-        elif self.framing == '1.1':
-            while msg_len > 0:
-                if msg_len > 8:
-                    ret = re.search('^\n#([0-9]+)\n', msg)
-                    if ret is None:
-                        return None
-                    else:
-                        msg_end = ret.end() + int(ret.group(1))
-                        if msg_len >= msg_end + 4:
-                            str_buffer += msg[ret.end():msg_end]
-                            msg = msg[msg_end:]
-                            msg_len = len(msg)
-                            if msg[:4] == '\n##\n':
-                                msg = msg[4:]
-                                msg_len = len(msg)
-                        else:
-                            return None
-                else:
-                    return None
-            return str_buffer
-        else:
-            raise Exception('Unknown NetConf framing mechanism version %s'
-                            % self.framing)
+                logger.info('Timeout. No rpc-reply received.')
+                raise TimeoutExpiredError('ncclient timed out while waiting '
+                                          'for an rpc-reply.')
