@@ -446,9 +446,8 @@ class Netconf(manager.Manager, BaseConnection):
 
     def __getattr__(self, attr):
         # avoid the __getattr__ from Manager class
-        raise AttributeError("'%s' object has no attribute '%s'"
+        raise AttributeError("'%s' object has no attribute '%s'" 
                              % (self.__class__.__name__, attr))
-
 
 class RawRPC(operations.rpc.RPC):
     '''RawRPC
