@@ -92,9 +92,9 @@ class BuildAndPreviewDocsCommand(Command):
                 ret_code = subprocess.call(shlex.split(sphinx_build_cmd))
                 if not ret_code:
                     ret_code = subprocess.call(shlex.split(rsync_cmd))
-                    print("\nYou may preview the documentation at the following URL:")
-                    print("http://wwwin-home.cisco.com/~{user}/cisco_shared/{pkg_name}/html".\
-                        format(user=user, pkg_name=pkg_path))
+                    #print("\nYou may preview the documentation at the following URL:")
+                    #print("http://wwwin-home.cisco.com/~{user}/cisco_shared/{pkg_name}/html".\
+                    #    format(user=user, pkg_name=pkg_path))
                     sys.exit(0)
             sys.exit(1)
         except Exception:
