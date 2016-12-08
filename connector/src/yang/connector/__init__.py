@@ -97,11 +97,11 @@ class Netconf(manager.Manager, BaseConnection):
         default this value is 30 seconds.
 
     client_capabilities : `object`
-        Object ncclient.capabilities.Capabilities representing the client’s
+        Object ncclient.capabilities.Capabilities representing the client's
         capabilities.
 
     server_capabilities : `object`
-        Object ncclient.capabilities.Capabilities representing the server’s
+        Object ncclient.capabilities.Capabilities representing the server's
         capabilities, and it has a list of data models the server supports.
 
     async_mode : `boolean`
