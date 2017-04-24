@@ -38,6 +38,35 @@ class MySSHSession():
     def is_alive(self):
         return True
 
+class MySSHSession2():
+
+    def __init__(self):
+        self._is_stopped = False
+        self._connected = False
+
+    @property
+    def connected(self):
+        return self._connected
+
+    def connect(self, host=None, port=None, username=None, password=None, hostkey_verify=None):
+        if username == 'admin' and password == 'admin':
+            self._connected = True
+
+    def close(self):
+        self._connected = False
+
+    def send(self, message):
+        pass
+
+    def get_listener_instance(self, cls):
+        pass
+
+    def add_listener(self, listener):
+        pass
+
+    def is_alive(self):
+        return True
+
 class MyRawRPC():
 
     def __init__(self, session=None, device_handler=None, async=None,
@@ -127,9 +156,32 @@ class TestYang(unittest.TestCase):
     def test_connect_2(self):
         self.nc_device._session = MySSHSession()
         self.nc_device.connect()
-        self.nc_device.connect()
         generated_value = self.nc_device.connected
         expected_value = True
+        self.assertEqual(generated_value, expected_value)
+
+    def test_connect_3(self):
+        nc_device = yang.connector.Netconf(device=self.device,
+                                           alias='nc2',
+                                           via='netconf',
+                                           username='admin',
+                                           password='admin')
+        nc_device._session = MySSHSession2()
+        nc_device.connect()
+        generated_value = nc_device.connected
+        expected_value = True
+        self.assertEqual(generated_value, expected_value)
+
+    def test_connect_4(self):
+        nc_device = yang.connector.Netconf(device=self.device,
+                                           alias='nc2',
+                                           via='netconf',
+                                           username='admi',
+                                           password='admin')
+        nc_device._session = MySSHSession2()
+        nc_device.connect()
+        generated_value = nc_device.connected
+        expected_value = False
         self.assertEqual(generated_value, expected_value)
 
     @patch('yang.connector.RawRPC', new=MyRawRPC)
