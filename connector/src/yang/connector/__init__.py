@@ -3,7 +3,7 @@ Interfaces (DMI), in particular, an implementation of Netconf client by
 wrapping up ncclient package. Restconf implementation is coming next."""
 
 # metadata
-__version__ = '2.0.0'
+__version__ = '2.0.1'
 __author__ = ('Jonathan Yang <yuekyang@cisco.com>',
               'Siming Yuan <siyuan@cisco.com',)
 __contact__ = 'yang-python@cisco.com'
@@ -284,6 +284,8 @@ class Netconf(manager.Manager, BaseConnection):
         if 'hostkey_verify' not in connection_info:
             connection_info['hostkey_verify'] = False
 
+        connection_info = {k: getattr(self, k, v) for k, v in connection_info.items()}
+
         try:
             self.session.connect(**connection_info)
         except Exception:
@@ -446,7 +448,7 @@ class Netconf(manager.Manager, BaseConnection):
 
     def __getattr__(self, attr):
         # avoid the __getattr__ from Manager class
-        raise AttributeError("'%s' object has no attribute '%s'" 
+        raise AttributeError("'%s' object has no attribute '%s'"
                              % (self.__class__.__name__, attr))
 
 class RawRPC(operations.rpc.RPC):
