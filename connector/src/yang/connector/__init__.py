@@ -17,6 +17,7 @@ from ncclient import manager
 from ncclient import operations
 from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
+from ncclient.operations.errors import TimeoutExpiredError
 
 from ats.connections import BaseConnection
 
