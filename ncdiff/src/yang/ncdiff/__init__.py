@@ -4,7 +4,7 @@ applied on a config. A config is the payload of a get-config message, and a
 diff is the payload of a edit-config message."""
 
 # metadata
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 __author__ = 'Jonathan Yang <yuekyang@cisco.com>'
 __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc. Cisco Confidential'
@@ -58,9 +58,10 @@ def __repr__(self):
                                      hex(id(self)))
 
 def __str__(self):
-    return etree.tostring(self._root,
-                          encoding='unicode',
-                          pretty_print=True)
+    self.parse()
+    xml_str = etree.tostring(self._root, encoding='unicode')
+    xml_ele = etree.XML(xml_str, etree.XMLParser(remove_blank_text=True))
+    return etree.tostring(xml_ele, encoding='unicode', pretty_print=True)
 
 def xpath(self, *args, **kwargs):
     if 'namespaces' not in kwargs:
