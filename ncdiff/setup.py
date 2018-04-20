@@ -169,9 +169,12 @@ setup(
 
     # package dependencies
     install_requires =  [
-        'paramiko >= 1.15.1',
-        'lxml >= 3.8.0',
-        'ncclient >= 0.5.2',
+        'pyang >= 1.7.3',
+        'requests >= 2.18.4',
+        'grpcio >= 1.7.3',
+        'grpcio-tools >= 1.7.3',
+        'xmljson >= 0.1.9',
+        'yang.connector >= 2.0.2',
     ],
 
     # any additional groups of dependencies.

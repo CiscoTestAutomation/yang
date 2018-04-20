@@ -4,7 +4,7 @@
 Introduction
 ============
 
-Configuration is a major object of NetConf. RFC 6241 claims "NETCONF defined in
+Configuration is a major goal of NetConf. RFC 6241 claims "NETCONF defined in
 this document provides mechanisms to install, manipulate, and delete the
 configuration of network devices."
 
@@ -18,43 +18,48 @@ get-config request. Between two states, there are two directional transitions:
 from state A to state B, and from state B to state A. Each transition
 corresponds to an edit-config RPC.
 
-This module defines three classes: ModelDevice, NcConfig and NcConfigDelta.
+Primarily, there are three classes defined in this module: ModelDevice, Config
+and ConfigDelta.
 
 * A modeled device supporting multiple models - ModelDevice
-* A config containing data of multiple models - NcConfig
-* A config delta between two configs - NcConfigDelta
+* A config state of multiple models - Config
+* A config delta between two configs - ConfigDelta
 
-Quick examples can be found in section Examples.
+Quick examples can be found in section Tutorial.
 
 Features
 --------
 
-* Create an instance of ModelDevice by providing a ncclient connection
-* Load model schema to an instance of ModelDevice
-* ModelDevice supports get, get-config and edit-config operations
-* Calculate diff of two instances of NcConfig, and the result is an instance of
-  NcConfigDelta
-* Calculate addition or subtraction of an instances of NcConfig and an
-  instances of NcConfigDelta
-* Support XPATH on GetReply, NcConfig and NcConfigDelta
+* Connect to a Netconf device by an instance of ModelDevice
+* Download, compile and print model schemas
+* Get config states
+* Calculate diff of two instances of Config, so edit-config can be sent to the
+  device to toggle between config state A and B
+* Given a config state and an edit-config, calculate the new config state
+* Support XPATH on Config and RPCReply
+* Instantiate Config objects by Netconf rpc-reply, Restconf GET reply or gNMI
+  GetResponse
+* Present ConfigDelta objects in the form of Netconf (a config content of
+  edit-config), Restconf (a list of Restconf Requests), or gNMI (a gNMI
+  SetRequest).
 
 Config Operations
 -----------------
 
 Summary of config operations:
 
-===============   =========   ===============   =========   ===============   ==================================
-operand           operator    operand           equality    result            note
-===============   =========   ===============   =========   ===============   ==================================
-NcConfig          \+          NcConfig          =           NcConfig          Combine two config
-NcConfig          \+          NcConfigDelta     =           NcConfig          Apply edit-config to a config
-NcConfigDelta     \+          NcConfigDelta     =           N/A               Not implemented
-NcConfigDelta     \+          NcConfig          =           NcConfig          Apply edit-config to a config
-NcConfig          \-          NcConfig          =           NcConfigDelta     Generate an edit-config
-NcConfig          \-          NcConfigDelta     =           NcConfig          Apply an opposite edit-config
-NcConfigDelta     \-          NcConfigDelta     =           N/A               Not implemented
-NcConfigDelta     \-          NcConfig          =           N/A               Not implemented
-===============   =========   ===============   =========   ===============   ==================================
+=============   =========   =============   =========   =============   ==============================
+operand         operator    operand         equality    result          note
+=============   =========   =============   =========   =============   ==============================
+Config          \+          Config          =           Config          Combine two config
+Config          \+          ConfigDelta     =           Config          Apply edit-config to a config
+ConfigDelta     \+          ConfigDelta     =           N/A             Not implemented
+ConfigDelta     \+          Config          =           Config          Apply edit-config to a config
+Config          \-          Config          =           ConfigDelta     Generate an edit-config
+Config          \-          ConfigDelta     =           Config          Apply an opposite edit-config
+ConfigDelta     \-          ConfigDelta     =           N/A             Not implemented
+ConfigDelta     \-          Config          =           N/A             Not implemented
+=============   =========   =============   =========   =============   ==============================
 
 
 Support Mailers
@@ -64,483 +69,45 @@ model testing grows in Cisco. Any questions or requests may be sent to
 yang-python@cisco.com.
 
 
-Examples
-========
-
-Here are some usage examples of yang.ncdiff. They are organized in the sequence
-of four classes - ModelDevice, NcConfig, NcConfigDelta, and RPCReply.
-
-ModelDevice
------------
-
-Similar to `yang.connector
-<http://wwwin-pyats.cisco.com/cisco-shared/yang/connector/html/>`_, users may
-create a ModelDevice instance as a device connection instance. Say there is a
-YAML topology file:
-
-.. code-block:: text
-
-    devices:
-        asr22:
-            type: 'ASR'
-            tacacs:
-                login_prompt: "login:"
-                password_prompt: "Password:"
-                username: "admin"
-            passwords:
-                tacacs: admin
-                enable: admin
-                line: admin
-            connections:
-                a:
-                    protocol: telnet
-                    ip: "1.2.3.4"
-                    port: 2004
-                vty:
-                    protocol : telnet
-                    ip : "2.3.4.5"
-                netconf:
-                    class: yang.ncdiff.ModelDevice
-                    ip : "2.3.4.5"
-                    port: 830
-                    username: admin
-                    password: admin
-                    hostkey_verify: False
-                    look_for_keys: False
-
-Next, prepare Netconf connection and create an instance of ModelDevice:
-
-.. code-block:: text
-
-    >>> from ats.topology import loader
-    >>> testbed = loader.load('/users/xxx/projects/asr22.yaml')
-    >>> device = testbed.devices['asr22']
-    >>> device.connect(alias='nc', via='netconf')
-    >>> device.nc
-    <yang.ncdiff.ModelDevice object at 0xf7c9042c>
-    >>> device.nc.raise_mode = 0
-    >>>
-
-.. note::
-
-    raise_mode is an attribute of
-    `ncclient Manager
-    <http://ncclient.readthedocs.io/en/latest/manager.html#manager>`_
-    that defines
-    `exception raising mode
-    <http://ncclient.readthedocs.io/en/latest/manager.html#ncclient.manager.Manager.raise_mode>`_.
-    When raise_mode = 0,
-    `RPCError
-    <http://ncclient.readthedocs.io/en/latest/operations.html#ncclient.operations.RPCError>`_
-    exceptions are not raised if there is an rpc-error in replies.
-
-Load multiple models:
-
-.. code-block:: text
-
-    >>> device.nc.load_model('/users/xxx/models/Cisco-IOS-XE-native@2017-03-24.xml')
-    >>> device.nc.load_model('/users/xxx/models/openconfig-interfaces@2016-12-22.xml')
-    >>> device.nc.load_model('/users/xxx/models/openconfig-network-instance@2017-01-13.xml')
-    >>>
-
-If you forget what models are loaded, check attribute models:
-
-.. code-block:: text
-
-    >>> device.nc.models
-    ['Cisco-IOS-XE-native', 'openconfig-interfaces', 'openconfig-network-instance']
-    >>>
-
-These xml files are generated by
-`YTool
-<https://wiki.cisco.com/display/DDMICIA/Ytool+-+Test+Generation+for+Model-Defined+Interfaces>`_
-after `Sync` button on GUI is clicked. They can be copied from your YTool
-server to your local directory.
-
-Similar to ncclient, ModelDevice supports get, get-config and edit-config, in a
-simpler way:
-
-.. code-block:: text
-
-    >>> reply = device.nc.get(models='openconfig-network-instance')
-    >>> assert(reply.ok)
-    >>> print(reply)
-    ...
-    >>> reply = device.nc.get_config(models='openconfig-network-instance')
-    >>> assert(reply.ok)
-    >>> print(reply)
-    ...
-    >>>
-
-You can even pull statistics or config from multiple models. For example:
-
-.. code-block:: text
-
-    >>> reply = device.nc.get_config(models=['openconfig-interfaces',
-                                             'openconfig-network-instance'])
-    >>> assert(reply.ok)
-    >>> print(reply)
-    ...
-    >>>
-
-It would be convenient to call edit_config() with an instance of NcConfigDelta.
-More details of NcConfigDelta will be depicted in NcConfigDelta section. Assume
-variable `delta` is an instance of NcConfigDelta:
-
-.. code-block:: text
-
-    >>> reply = device.nc.edit_config(delta, target='running')
-    >>> assert(reply.ok)
-    >>>
-
-NcConfig
---------
-
-An instance of NcConfig stores a config state. There are three ways of creating
-a NcConfig instance. First, use get_config() and extract_config():
-
-.. code-block:: text
-
-    >>> reply = device.nc.get_config(models=['openconfig-interfaces',
-                                             'openconfig-network-instance'])
-    >>> config = device.nc.extract_config(reply)
-    >>> config
-    <yang.ncdiff.NcConfig {urn:ietf:params:xml:ns:netconf:base:1.0}config at 0xf715e40c>
-    >>> print(config)
-    ...
-    >>>
-
-Second, if you already have a rpc-reply in XML:
-
-.. code-block:: text
-
-    >>> xml = """
-            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-                       message-id="101">
-              <data>
-                <interfaces xmlns="http://openconfig.net/yang/interfaces">
-                  <interface>
-                    <name>GigabitEthernet1/0/1</name>
-                    <config>
-                      <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:ethernetCsmacd</type>
-                      <name>GigabitEthernet1/0/1</name>
-                      <enabled>true</enabled>
-                    </config>
-                    <ethernet xmlns="http://openconfig.net/yang/interfaces/ethernet">
-                      <config>
-                        <port-speed>SPEED_10MB</port-speed>
-                      </config>
-                    </ethernet>
-                    <routed-vlan xmlns="http://openconfig.net/yang/vlan">
-                      <ipv6 xmlns="http://openconfig.net/yang/interfaces/ip">
-                        <config>
-                          <enabled>false</enabled>
-                        </config>
-                      </ipv6>
-                    </routed-vlan>
-                  </interface>
-                  <interface>
-                    <name>GigabitEthernet1/0/10</name>
-                    <config>
-                      <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:ethernetCsmacd</type>
-                      <name>GigabitEthernet1/0/10</name>
-                      <enabled>true</enabled>
-                    </config>
-                    <routed-vlan xmlns="http://openconfig.net/yang/vlan">
-                      <ipv6 xmlns="http://openconfig.net/yang/interfaces/ip">
-                        <config>
-                          <enabled>false</enabled>
-                        </config>
-                      </ipv6>
-                    </routed-vlan>
-                  </interface>
-                </interfaces>
-              </data>
-            </rpc-reply>
-            """
-    >>> config = NcConfig(device.nc, xml)
-    >>> print(config)
-    ...
-    >>>
-
-Or, you have a config in XML:
-
-.. code-block:: text
-
-    >>> xml = """
-            <config xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-              <interfaces xmlns="http://openconfig.net/yang/interfaces">
-                <interface>
-                  <name>GigabitEthernet1/0/1</name>
-                  <config>
-                    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:ethernetCsmacd</type>
-                    <name>GigabitEthernet1/0/1</name>
-                    <enabled>true</enabled>
-                  </config>
-                  <ethernet xmlns="http://openconfig.net/yang/interfaces/ethernet">
-                    <config>
-                      <port-speed>SPEED_10MB</port-speed>
-                    </config>
-                  </ethernet>
-                  <routed-vlan xmlns="http://openconfig.net/yang/vlan">
-                    <ipv6 xmlns="http://openconfig.net/yang/interfaces/ip">
-                      <config>
-                        <enabled>false</enabled>
-                      </config>
-                    </ipv6>
-                  </routed-vlan>
-                </interface>
-                <interface>
-                  <name>GigabitEthernet1/0/10</name>
-                  <config>
-                    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:ethernetCsmacd</type>
-                    <name>GigabitEthernet1/0/10</name>
-                    <enabled>true</enabled>
-                  </config>
-                  <routed-vlan xmlns="http://openconfig.net/yang/vlan">
-                    <ipv6 xmlns="http://openconfig.net/yang/interfaces/ip">
-                      <config>
-                        <enabled>false</enabled>
-                      </config>
-                    </ipv6>
-                  </routed-vlan>
-                </interface>
-              </interfaces>
-            </config>
-            """
-    >>> config = NcConfig(device.nc, xml)
-    >>> print(config)
-    ...
-    >>>
-
-Third, if an instance of Element is available:
-
-.. code-block:: text
-
-    >>> config_ele
-    <Element {urn:ietf:params:xml:ns:netconf:base:1.0}config at 0xf31cf2ec>
-    >>> config = NcConfig(device.nc, config_ele)
-    >>> config
-    <yang.ncdiff.NcConfig {urn:ietf:params:xml:ns:netconf:base:1.0}config at 0xf31d1dac>
-    >>> print(config)
-    >>>
-
-Internally, config information is stored in attribute `ele`, which is the
-single source of truth. Users may manipulate attribute `ele` if required. And
-another attribute `xml` updates automatically.
-
-.. code-block:: text
-
-    >>> config.ele
-    <Element {urn:ietf:params:xml:ns:netconf:base:1.0}config at 0xf31d1c8c>
-    >>> config.xml
-    '<nc:config xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">...</nc:config>'
-    >>>
-
-NcConfig supports XPATH. Say I need port speed config of GigabitEthernet1/0/1:
-
-.. code-block:: text
-
-    >>> ret = config.xpath('/nc:config/oc-if:interfaces/oc-if:interface'
-                           '[oc-if:name="GigabitEthernet0/0"]/oc-eth:ethernet'
-                           '/oc-eth:config/oc-eth:port-speed/text()')
-    >>> assert(ret[0] == 'SPEED_1GB')
-    >>>
-
-Or I want to know how many interface names start with "GigabitEthernet1/0/":
-
-.. code-block:: text
-
-    >>> ret = config.xpath('count(/nc:config/oc-if:interfaces/oc-if:interface'
-                           '[starts-with(oc-if:name/text(),
-                                         "GigabitEthernet1/0/")])')
-    >>> assert(ret == 2.0)
-    >>>
-
-.. note::
-
-    In order to facilitate xpath() and filter(), users may call ns_help() to
-    view the mapping between prefixes and URLs.
-
-NcConfig allows you to get a partial config. Traditional way is defining a
-filter and calling get_config():
-
-.. code-block:: text
-
-    >>> from lxml import etree
-    >>> f = etree.Element('{urn:ietf:params:xml:ns:netconf:base:1.0}filter',
-                          type='xpath',
-                          nsmap={'ios':
-                                 'http://cisco.com/ns/yang/Cisco-IOS-XE-native'},
-                          select=".//ios:native/ios:ntp")
-    >>> reply = device.nc.get_config(filter=f)
-    >>> c1 = device.nc.extract_config(reply)
-    >>>
-
-Another way is calling filter():
-
-.. code-block:: text
-
-    >>> reply = device.nc.get_config(models='Cisco-IOS-XE-native')
-    >>> c2 = device.nc.extract_config(reply).filter('.//ios:native/ios:ntp')
-    >>>
-
-And `c1` equals to `c2`:
-
-.. code-block:: text
-
-    >>> c1 == c2
-    True
-    >>>
-
-NcConfigDelta
--------------
-
-An object representing the difference between two NcConfig objects.
-NcConfigDelta object is directional. For instance, `delta` can be considered as
-the transition from `config1` to `config2`, assuming `config1` to `config2` are
-NcConfig objects:
-
-.. code-block:: text
-
-    >>> delta = config2 - config1
-    >>> print(delta)
-    ...
-    >>>
-
-If your current device config is `config1`, an edit-config can be sent out to
-complete the transition to `config2`:
-
-.. code-block:: text
-
-    >>> reply = device.nc.edit_config(delta, target='running')
-    >>> assert(reply.ok)
-    >>>
-
-Later, you may want to switch your device config back to `config1`:
-
-.. code-block:: text
-
-    >>> reply = device.nc.edit_config(-delta, target='running')
-    >>> assert(reply.ok)
-    >>>
-
-You can confirm that your device is in state `config1` indeed:
-
-.. code-block:: text
-
-    >>> reply = device.nc.get_config(models='Cisco-IOS-XE-native')
-    >>> config3 = device.nc.extract_config(reply)
-    >>> config1 == config3
-    True
-    >>>
-
-There is another use case. If you already have an edit-config in XML, a
-NcConfigDelta instance can be created:
-
-.. code-block:: text
-
-    >>> delta_xml = """
-        <rpc message-id="101" xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-          <edit-config>
-            <target>
-              <running/>
-            </target>
-            <xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0"
-                       xmlns:yang="urn:ietf:params:xml:ns:yang:1">
-              <network-instances xmlns="http://openconfig.net/yang/network-instance">
-                <network-instance>
-                  <name>default</name>
-                  <table-connections>
-                    <table-connection>
-                      <src-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</src-protocol>
-                      <dst-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:BGP</dst-protocol>
-                      <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
-                      <config>
-                        <import-policy yang:insert="before"
-                                       yang:value="ROUTEMAP7">ROUTEMAP1</import-policy>
-                      </config>
-                    </table-connection>
-                  </table-connections>
-                </network-instance>
-              </network-instances>
-            </xc:config>
-          </edit-config>
-        </rpc>
-        """
-    >>> delta = NcConfigDelta(device.nc, delta_xml)
-    >>> delta
-    <yang.ncdiff.NcConfigDelta {urn:ietf:params:xml:ns:netconf:base:1.0}config at 0xf709132c>
-    >>> print(delta)
-    ...
-    >>> print(-delta)
-    ...
-    >>>
-
-.. note::
-
-    NcConfigDelta allows you to pass two XML strings or two Element objects in
-    the constructor. One is the transition, the other one is the opposite
-    direction transition. In the example above, only one XML string was passed
-    in, so the opposite direction is empty.
-
-Given the delta, yang.ncdiff can predict the result of transition from `config4`:
-
-.. code-block:: text
-
-    >>> config5 = config4 + delta
-    >>> print(config5)
-    ...
-    >>>
-
-NcConfigDelta supports xpath() and filter() as well.
-
-.. note::
-
-    In order to facilitate xpath() and filter(), users may call ns_help() to
-    view the mapping between prefixes and URLs.
-
-RPCReply
---------
-
-RPCReply is originally a class in ncclient package, but it is enhanced to
-support XPATH by yang.ncdiff.
-
-RPCReply supports method xpath() but not filter().
-
-.. code-block:: text
-
-    >>> reply = device.nc.get(models='openconfig-network-instance')
-
-    >>> ret = reply.xpath('/nc:rpc-reply/nc:data/oc-netinst:network-instances'
-                          '/oc-netinst:network-instance/oc-netinst:interfaces'
-                          '/oc-netinst:interface/oc-netinst:id/text()')
-    >>> assert(set(ret) == {'GigabitEthernet0/0'})
-    >>>
-
-.. note::
-
-    In order to facilitate xpath(), users may call ns_help() to view the
-    mapping between prefixes and URLs.
-
-In some cases, especially when receiving rpc-error, there might be some
-namespaces that are not claimed in model schema. ns_help() still lists them and
-make up some prefixes for you.
-
-.. code-block:: text
-
-    >>> reply = device.nc.edit_config(delta, target='running')
-    >>> reply.ok
-    False
-    >>> reply.ns_help()
-    >>>
+Usage Examples
+==============
+
+.. toctree::
+
+   usage_tutorial
+   usage_rc_put
+   usage_rc_get
+   usage_gnmi_set
+   usage_gnmi_get
+   usage_config
+   usage_configdelta
+   usage_model
+   usage_running
+   usage_rpcreply
 
 
 Installation
 ============
 
-yang.ncdiff module requires lxml and ncclient, which will be briefly described
-first. Then yang.ncdiff package installation section is followed.
+yang.ncdiff module requires a few packages. Some of them are required
+implicitly:
+
+* `lxml <http://lxml.de/index.html>`_ (required by ncclient)
+* `paramiko <https://pypi.org/project/paramiko/>`_ (required by ncclient)
+* `ncclient <http://ncclient.readthedocs.io/en/latest/>`_ (required by
+  yang.connector)
+
+Others are required directly:
+
+* `pyang <https://pypi.org/project/pyang/>`_
+* `requests <https://pypi.org/project/requests/>`_
+* `grpcio <https://pypi.org/project/grpcio/>`_
+* `grpcio-tools <https://pypi.org/project/grpcio-tools/>`_
+* `xmljson <https://pypi.org/project/xmljson/>`_
+* `yang.connector <http://wwwin-pyats.cisco.com/cisco-shared/yang/connector/html/>`_
+
+Installation of these packages are normally smooth. Based on our support
+experience, most issues are related to lxml and paramiko.
 
 lxml Installation
 -----------------
@@ -579,15 +146,21 @@ do not see any error):
     >>> from lxml import etree
     >>>
 
-ncclient Installation
+paramiko Installation
 ---------------------
 
-Once lxml is installed and verified, ncclient installation should be straight
-forward.
+When you have a relatively new version of CEL on your server, paramiko
+installation could be straight forward.
 
 .. code-block:: text
 
-    pip install ncclient
+    pip install paramiko
+
+Otherwise, try paramiko version 1.15.3:
+
+.. code-block:: text
+
+    pip install paramiko==1.15.3
 
 ncdiff Installation
 -------------------
@@ -599,7 +172,6 @@ First-time installation steps:
 .. code-block:: text
 
     pip install yang.ncdiff
-
 
 
 Steps to upgrade to latest:
