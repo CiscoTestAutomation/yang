@@ -18,12 +18,14 @@ logger = logging.getLogger(__name__)
 
 nc_url = xml_.BASE_NS_1_0
 yang_url = 'urn:ietf:params:xml:ns:yang:1'
+tailf_url= 'http://tail-f.com/ns/netconf/params/1.1'
 ncEvent_url = xml_.NETCONF_NOTIFICATION_NS
 config_tag = '{' + nc_url + '}config'
 filter_tag = '{' + nc_url + '}filter'
 special_prefixes = {
     nc_url: 'nc',
     yang_url: 'yang',
+    tailf_url: 'tailf',
     ncEvent_url: 'ncEvent',
     }
 
@@ -471,12 +473,8 @@ class ModelDevice(Netconf, metaclass=OpExecutorFix):
                 schema_node = self.get_schema_node(child)
                 if schema_node.get('access') == 'read-only':
                     parent.remove(child)
-                elif etree.iselement(child):
+                elif len(child) > 0:
                     remove_read_only(child)
-            if parent.tag != config_tag:
-                type = self.get_schema_node(parent).get('type')
-                if (type == 'container' or type == 'list') and len(parent) == 0:
-                    parent.getparent().remove(parent)
 
         config = Config(self, reply)
         remove_read_only(config.ele)

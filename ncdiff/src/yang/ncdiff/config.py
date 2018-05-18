@@ -271,17 +271,9 @@ class Config(object):
             If config contains error.
         '''
 
-        def clean_up_empty_container(node):
-            parent = node.getparent()
-            parent.remove(node)
-            if parent.tag != config_tag and not parent.getchildren():
-                clean_up_empty_container(parent)
-
         self.roots
         for child in self.ele.getchildren():
-            empty_nodes = self._validate_node(child)
-            for empty_node in empty_nodes:
-                clean_up_empty_container(empty_node)
+            self._validate_node(child)
 
     def ns_help(self):
         '''ns_help
@@ -359,11 +351,10 @@ class Config(object):
         Returns
         -------
 
-        list
-            A list of empty nodes whose types are container or list.
+        None
+            There is no return of this method.
         '''
 
-        ret = []
         c = Composer(self.device, node)
         if c.schema_node is None:
             p = self.device.get_xpath(node, instance=False)
@@ -375,19 +366,24 @@ class Config(object):
                     p = self.device.get_xpath(node, instance=False)
                     raise ConfigError("missing key '{}' of the config " \
                                       "node {}".format(key, p))
+
         for tag in operation_tag, insert_tag, value_tag, key_tag:
             if node.get(tag):
                 raise ConfigError("the config node contains invalid " \
                                   "attribute '{}': {}" \
                                   .format(tag, self.device.get_xpath(node)))
-        if c.schema_node is not None and \
-          (c.schema_node.get('type') == 'list' or \
-           c.schema_node.get('type') == 'container') and \
-           not node.getchildren():
-            ret.append(node)
+
         for child in node.getchildren():
-            ret.extend(self._validate_node(child))
-        return ret
+            if len(child) > 0:
+                self._validate_node(child)
+
+            # clean up empty containers
+            child_schema_node = self.device.get_schema_node(child)
+            if len(child) == 0 and \
+               child_schema_node.get('type') == 'container' and \
+               child_schema_node.get('presence') != 'true':
+                print(self.device.get_xpath(child))
+                node.remove(child)
 
     def _node_filter(self, node, ancestors, filtrates):
         '''_node_filter
