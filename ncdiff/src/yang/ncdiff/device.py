@@ -47,7 +47,7 @@ class ModelDevice(Netconf, metaclass=OpExecutorFix):
     '''ModelDevice
 
     Abstraction of a device that supports NetConf protocol and YANG models.
-    This is subclass of yang.connector.Netconf with some enhancements.
+    This is a subclass of yang.connector.Netconf with some enhancements.
 
     Attributes
     ----------

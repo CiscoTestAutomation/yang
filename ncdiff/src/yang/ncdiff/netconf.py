@@ -113,7 +113,44 @@ class NetconfCalculator(BaseCalculator):
 
     add : `Element`
         Content of a Config instance.
+
+    preferred_create : `str`
+        Preferred operation of creating a new element. Choice of 'merge',
+        'create' or 'replace'.
+
+    preferred_replace : `str`
+        Preferred operation of replacing an existing element. Choice of
+        'merge' or 'replace'.
+
+    preferred_delete : `str`
+        Preferred operation of deleting an existing element. Choice of
+        'delete' or 'remove'.
     '''
+
+    def __init__(self, device, etree1, etree2,
+                 preferred_create='merge',
+                 preferred_replace='merge',
+                 preferred_delete='delete'):
+        '''
+        __init__ instantiates a NetconfCalculator instance.
+        '''
+
+        BaseCalculator.__init__(self, device, etree1, etree2)
+        if preferred_create in ['merge', 'create', 'replace']:
+            self.preferred_create = preferred_create
+        else:
+            raise ValueError("only 'merge', 'create' or 'replace' are valid " \
+                             "values of 'preferred_create'")
+        if preferred_replace in ['merge', 'replace']:
+            self.preferred_replace = preferred_replace
+        else:
+            raise ValueError("only 'merge' or 'replace' are valid " \
+                             "values of 'preferred_replace'")
+        if preferred_delete in ['delete', 'remove']:
+            self.preferred_delete = preferred_delete
+        else:
+            raise ValueError("only 'delete' or 'remove' are valid " \
+                             "values of 'preferred_delete'")
 
     @property
     def add(self):
@@ -668,13 +705,45 @@ class NetconfCalculator(BaseCalculator):
             There is no return of this method.
         '''
 
+        def same_leaf_list(tag):
+            list_self = [c for c in list(node_self) if c.tag == tag]
+            list_other = [c for c in list(node_other) if c.tag == tag]
+            s_node = self.device.get_schema_node((list_self + list_other)[0])
+            if s_node.get('ordered-by') == 'user':
+                if [i.text for i in list_self] == [i.text for i in list_other]:
+                    return True
+                else:
+                    return False
+            else:
+                if set([i.text for i in list_self]) == \
+                   set([i.text for i in list_other]):
+                    return True
+                else:
+                    return False
+
+        if self.preferred_replace != 'merge':
+            t_self = [c.tag for c in list(node_self) \
+                      if self.device.get_schema_node(c).get('type') == \
+                         'leaf-list']
+            t_other = [c.tag for c in list(node_other) \
+                       if self.device.get_schema_node(c).get('type') == \
+                          'leaf-list']
+            commonalities = set(t_self) & set(t_other)
+            for commonality in commonalities:
+                if not same_leaf_list(commonality):
+                    node_self.set(operation_tag, 'replace')
+                    node_other.set(operation_tag, 'replace')
+                    return
+
         in_s_not_in_o, in_o_not_in_s, in_s_and_in_o = \
             self._group_kids(node_self, node_other)
         ordered_by_user = {}
         for child_self in in_s_not_in_o:
             child_other = etree.Element(child_self.tag,
-                                        {operation_tag: 'delete'},
+                                        {operation_tag: self.preferred_delete},
                                         nsmap=child_self.nsmap)
+            if self.preferred_create != 'merge':
+                child_self.set(operation_tag, self.preferred_create)
             siblings = list(node_other.iterchildren(tag=child_self.tag))
             if siblings:
                 siblings[-1].addnext(child_other)
@@ -697,8 +766,10 @@ class NetconfCalculator(BaseCalculator):
                     e.text = key_node.text
         for child_other in in_o_not_in_s:
             child_self = etree.Element(child_other.tag,
-                                       {operation_tag: 'delete'},
+                                       {operation_tag: self.preferred_delete},
                                        nsmap=child_other.nsmap)
+            if self.preferred_create != 'merge':
+                child_other.set(operation_tag, self.preferred_create)
             siblings = list(node_self.iterchildren(tag=child_other.tag))
             if siblings:
                 siblings[-1].addnext(child_self)
@@ -726,6 +797,10 @@ class NetconfCalculator(BaseCalculator):
                     if not s_node.get('is_key'):
                         node_self.remove(child_self)
                         node_other.remove(child_other)
+                else:
+                    if self.preferred_replace != 'merge':
+                        child_self.set(operation_tag, self.preferred_replace)
+                        child_other.set(operation_tag, self.preferred_replace)
             elif s_node.get('type') == 'leaf-list':
                 if s_node.get('ordered-by') == 'user':
                     if s_node.tag not in ordered_by_user:

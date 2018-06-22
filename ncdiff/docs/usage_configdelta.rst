@@ -90,5 +90,37 @@ Additional confirmation might be achieved via CLI:
     aaa group server radius ISE1
     nyqT05#
 
+create ConfigDelta objects with special requirements
+----------------------------------------------------
+
+There are many different Netconf edit-config RPCs that can achieve the same
+transition between two configuration states. By default, ConfigDelta.nc uses
+'merge' and 'delete' operations as much as possible. But sometimes we would like to test
+other Netconf operations such as 'create', 'replace' and 'remove'. The way
+of doing that is creating ConfigDelta objects with arguments:
+
+.. code-block:: text
+
+    >>> delta = ConfigDelta(config_src=config1, config_dst=config2,
+                            preferred_create='create',
+                            preferred_replace='replace',
+                            preferred_delete='remove')
+    >>> print(delta)
+    ...
+    >>>
+
+Netconf allows creating a new container, a new list instance, a new leaf or a
+new leaf-list instance by operation 'create', 'replace' or 'merge', so the value
+of 'preferred_create' can be any of these.
+
+When the value of 'preferred_replace' is 'replace', a container, a list instance
+or a leaf will be replaced by operation 'replace'. Using 'replace' operation to
+replace an instance of leaf-list is illegal, as a result, 'replace' operation is
+carried out at its parent level, which is either a container or a list instance.
+If 'preferred_replace' is set to 'merge', we search deep and use either 'merge',
+'delete' or 'remove' to modify end leaf or leaf-list.
+
+Both 'delete' and 'remove' are valid options of 'preferred_delete'.
+
 
 .. sectionauthor:: Jonathan Yang <yuekyang@cisco.com>

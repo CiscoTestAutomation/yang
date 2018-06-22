@@ -382,7 +382,7 @@ class Config(object):
             if len(child) == 0 and \
                child_schema_node.get('type') == 'container' and \
                child_schema_node.get('presence') != 'true':
-                print(self.device.get_xpath(child))
+#               print(self.device.get_xpath(child))
                 node.remove(child)
 
     def _node_filter(self, node, ancestors, filtrates):
@@ -478,9 +478,24 @@ class ConfigDelta(object):
     roots : `dict`
         A dictionary of roots of self.nc. Dictionary keys are tags of roots in
         `{url}tagname` notation, and values are corresponding model names.
+
+    preferred_create : `str`
+        Preferred operation of creating a new element. Choice of 'merge',
+        'create' or 'replace'.
+
+    preferred_replace : `str`
+        Preferred operation of replacing an existing element. Choice of
+        'merge' or 'replace'.
+
+    preferred_delete : `str`
+        Preferred operation of deleting an existing element. Choice of
+        'delete' or 'remove'.
     '''
 
-    def __init__(self, config_src, config_dst=None, delta=None):
+    def __init__(self, config_src, config_dst=None, delta=None,
+                 preferred_create='merge',
+                 preferred_replace='merge',
+                 preferred_delete='delete'):
         '''
         __init__ instantiates a ConfigDelta instance.
         '''
@@ -489,6 +504,21 @@ class ConfigDelta(object):
             raise TypeError("argument 'config_src' must be " \
                             "yang.ncdiff.Config, but not '{}'" \
                             .format(type(config_src)))
+        if preferred_create in ['merge', 'create', 'replace']:
+            self.preferred_create = preferred_create
+        else:
+            raise ValueError("only 'merge', 'create' or 'replace' are valid " \
+                             "values of 'preferred_create'")
+        if preferred_replace in ['merge', 'replace']:
+            self.preferred_replace = preferred_replace
+        else:
+            raise ValueError("only 'merge' or 'replace' are valid " \
+                             "values of 'preferred_replace'")
+        if preferred_delete in ['delete', 'remove']:
+            self.preferred_delete = preferred_delete
+        else:
+            raise ValueError("only 'delete' or 'remove' are valid " \
+                             "values of 'preferred_delete'")
         self.config_src = config_src
         if delta is not None:
             if isinstance(delta, str) or etree.iselement(delta):
@@ -522,7 +552,10 @@ class ConfigDelta(object):
     @property
     def nc(self):
         return NetconfCalculator(self.device,
-                                 self.config_dst.ele, self.config_src.ele).sub
+                                 self.config_dst.ele, self.config_src.ele,
+                                 preferred_create=self.preferred_create,
+                                 preferred_replace=self.preferred_replace,
+                                 preferred_delete=self.preferred_delete).sub
 
     @property
     def rc(self):

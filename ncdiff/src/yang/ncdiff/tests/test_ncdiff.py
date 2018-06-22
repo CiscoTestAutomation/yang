@@ -753,6 +753,216 @@ class TestNcDiff(unittest.TestCase):
         config4 = config2 + delta2
         self.assertEqual(config1, config4)
 
+    def test_delta_5(self):
+        config_xml1 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <network-instances xmlns="http://openconfig.net/yang/network-instance">
+                  <network-instance>
+                    <name>default</name>
+                    <config>
+                      <name>default</name>
+                      <type xmlns:oc-ni-types="http://openconfig.net/yang/network-instance-types">oc-ni-types:DEFAULT_INSTANCE</type>
+                      <description>default-vrf [read-only]</description>
+                    </config>
+                    <tables>
+                      <table>
+                        <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        <config>
+                          <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        </config>
+                      </table>
+                      <table>
+                        <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV6</address-family>
+                        <config>
+                          <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV6</address-family>
+                        </config>
+                      </table>
+                      <table>
+                        <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:STATIC</protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        <config>
+                          <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:STATIC</protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        </config>
+                      </table>
+                      <table>
+                        <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:STATIC</protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV6</address-family>
+                        <config>
+                          <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:STATIC</protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV6</address-family>
+                        </config>
+                      </table>
+                    </tables>
+                  </network-instance>
+                </network-instances>
+              </data>
+            </rpc-reply>
+            """
+        config_xml2 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <network-instances xmlns="http://openconfig.net/yang/network-instance">
+                  <network-instance>
+                    <name>default</name>
+                    <config>
+                      <name>default</name>
+                      <type xmlns:oc-ni-types="http://openconfig.net/yang/network-instance-types">oc-ni-types:DEFAULT_INSTANCE</type>
+                      <description>default-vrf [read-only]</description>
+                    </config>
+                    <tables>
+                      <table>
+                        <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        <config>
+                          <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV44</address-family>
+                        </config>
+                      </table>
+                      <table>
+                        <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:STATIC</protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        <config>
+                          <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:STATIC</protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        </config>
+                      </table>
+                      <table>
+                        <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:BGP</protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        <config>
+                          <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:BGP</protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        </config>
+                      </table>
+                      <table>
+                        <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:STATIC</protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV6</address-family>
+                        <config>
+                          <protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:STATIC</protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV6</address-family>
+                        </config>
+                      </table>
+                    </tables>
+                  </network-instance>
+                </network-instances>
+              </data>
+            </rpc-reply>
+            """
+        config1 = Config(self.d, config_xml1)
+        config2 = Config(self.d, config_xml2)
+        # modify schema node
+        nodes = config1.xpath('.//oc-netinst:network-instance'
+                              '/oc-netinst:tables/oc-netinst:table')
+        node = nodes[0]
+        schema_node = config1.get_schema_node(node)
+        schema_node.set('ordered-by', 'user')
+        delta1 = ConfigDelta(config_src=config1, config_dst=config2,
+                             preferred_create='create',
+                             preferred_replace='replace',
+                             preferred_delete='remove')
+        config3 = config1 + delta1
+        self.assertEqual(config2, config3)
+        self.assertTrue(config2 <= config3)
+        self.assertTrue(config2 >= config3)
+        delta2 = config1 - config2
+        config4 = config2 + delta2
+        self.assertEqual(config1, config4)
+
+    def test_delta_6(self):
+        config_xml1 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <network-instances xmlns="http://openconfig.net/yang/network-instance">
+                  <network-instance>
+                    <name>default</name>
+                    <config>
+                      <name>default</name>
+                      <type xmlns:oc-ni-types="http://openconfig.net/yang/network-instance-types">oc-ni-types:DEFAULT_INSTANCE</type>
+                      <description>default-vrf [read-only]</description>
+                    </config>
+                    <table-connections>
+                      <table-connection>
+                        <src-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</src-protocol>
+                        <dst-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:BGP</dst-protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        <config>
+                          <src-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</src-protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                          <dst-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:BGP</dst-protocol>
+                          <import-policy>ROUTEMAP1</import-policy>
+                          <import-policy>ROUTEMAP2</import-policy>
+                          <default-import-policy>REJECT_ROUTE</default-import-policy>
+                        </config>
+                      </table-connection>
+                    </table-connections>
+                  </network-instance>
+                </network-instances>
+              </data>
+            </rpc-reply>
+            """
+        config_xml2 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <network-instances xmlns="http://openconfig.net/yang/network-instance">
+                  <network-instance>
+                    <name>default</name>
+                    <config>
+                      <name>default</name>
+                      <type xmlns:oc-ni-types="http://openconfig.net/yang/network-instance-types">oc-ni-types:DEFAULT_INSTANCE</type>
+                      <description>default-vrf [read-only]</description>
+                    </config>
+                    <table-connections>
+                      <table-connection>
+                        <src-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</src-protocol>
+                        <dst-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:BGP</dst-protocol>
+                        <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                        <config>
+                          <src-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:DIRECTLY_CONNECTED</src-protocol>
+                          <address-family xmlns:oc-types="http://openconfig.net/yang/openconfig-types">oc-types:IPV4</address-family>
+                          <dst-protocol xmlns:oc-pol-types="http://openconfig.net/yang/policy-types">oc-pol-types:BGP</dst-protocol>
+                          <import-policy>ROUTEMAP1</import-policy>
+                          <import-policy>ROUTEMAP3</import-policy>
+                          <import-policy>ROUTEMAP0</import-policy>
+                          <import-policy>ROUTEMAP2</import-policy>
+                          <default-import-policy>REJECT_ROUTE</default-import-policy>
+                        </config>
+                      </table-connection>
+                    </table-connections>
+                  </network-instance>
+                </network-instances>
+              </data>
+            </rpc-reply>
+            """
+        config1 = Config(self.d, config_xml1)
+        config2 = Config(self.d, config_xml2)
+
+        # modify schema node
+        nodes = config1.xpath('.//oc-netinst:network-instance'
+                              '/oc-netinst:table-connections'
+                              '/oc-netinst:table-connection'
+                              '/oc-netinst:config/oc-netinst:import-policy')
+        node = nodes[0]
+        schema_node = config1.get_schema_node(node)
+        schema_node.set('ordered-by', 'user')
+
+        delta1 = ConfigDelta(config_src=config1, config_dst=config2,
+                             preferred_create='create',
+                             preferred_replace='replace',
+                             preferred_delete='remove')
+        config3 = config1 + delta1
+        self.assertEqual(config2, config3)
+        self.assertTrue(config2 <= config3)
+        self.assertTrue(config2 >= config3)
+        delta2 = config1 - config2
+        config4 = config2 + delta2
+        self.assertEqual(config1, config4)
+
     def test_xpath_1(self):
         xml = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
