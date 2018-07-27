@@ -591,7 +591,7 @@ class ConfigDelta(object):
                            config_dst=self.config_src,
                            preferred_create=self.preferred_create,
                            preferred_replace=self.preferred_replace,
-                           preferred_delete=self.preferred_delete))
+                           preferred_delete=self.preferred_delete)
 
     def __pos__(self):
         return self
