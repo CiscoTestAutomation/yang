@@ -3,7 +3,7 @@ Interfaces (DMI), in particular, an implementation of Netconf client by
 wrapping up ncclient package. Restconf implementation is coming next."""
 
 # metadata
-__version__ = '2.0.2'
+__version__ = '2.0.3'
 __author__ = ('Jonathan Yang <yuekyang@cisco.com>',
               'Siming Yuan <siyuan@cisco.com',)
 __contact__ = 'yang-python@cisco.com'
@@ -12,6 +12,7 @@ __copyright__ = 'Cisco Systems, Inc. Cisco Confidential'
 
 import re
 import time
+import atexit
 import logging
 from ncclient import manager
 from ncclient import operations
@@ -119,6 +120,15 @@ class Netconf(manager.Manager, BaseConnection):
         # (could use super...)
         BaseConnection.__init__(self, *args, **kwargs)
 
+        # default values
+        defaults = {
+            'async_mode': False,
+            'raise_mode': 0,
+            'timeout': 30,
+            }
+        defaults = {k: self.connection_info.get(k, v) for k, v in defaults.items()}
+        defaults = {k: kwargs.get(k, v) for k, v in defaults.items()}
+
         # shortwire Ncclient device handling portion
         # and create just the DeviceHandler
         device_handler = DefaultDeviceHandler()
@@ -133,7 +143,9 @@ class Netconf(manager.Manager, BaseConnection):
         # (can't use super due to mro change)
         manager.Manager.__init__(self, session = session,
                                        device_handler = device_handler,
-                                       *args, **kwargs)
+                                       *args, **defaults)
+        for item in ['async_mode', 'raise_mode']:
+            setattr(self, item, defaults[item])
 
     @property
     def session(self):
@@ -260,39 +272,46 @@ class Netconf(manager.Manager, BaseConnection):
         if not self.session.is_alive():
             self._session = transport.SSHSession(self._device_handler)
 
-        # get all connection information
-        connection_info = self.connection_info.copy()
+        # default values
+        defaults = {
+            'host': None,
+            'port': 830,
+            'timeout': 30,
+            'username': None,
+            'password': None,
+            'key_filename': None,
+            'allow_agent': False,
+            'hostkey_verify': False,
+            'look_for_keys': False,
+            'ssh_config': None,
+            }
+        defaults.update(self.connection_info)
+
+        # remove items
+        disregards = ['class', 'model', 'protocol', 'async_mode', 'raise_mode']
+        defaults = {k: v for k, v in defaults.items() if k not in disregards}
 
         # rename ip -> host, cast to str type
-        connection_info['host'] = str(connection_info.pop('ip'))
+        if 'ip' in defaults:
+            defaults['host'] = str(defaults.pop('ip'))
 
         # rename user -> username
-        if 'user' in connection_info:
-            connection_info['username'] = str(connection_info.pop('user'))
+        if 'user' in defaults:
+            defaults['username'] = str(defaults.pop('user'))
 
-        # remove class
-        connection_info.pop('class')
-
-        # remove model xml file
-        if 'model' in connection_info:
-            connection_info.pop('model')
-
-        # remove protocol
-        if 'protocol' in connection_info:
-            connection_info.pop('protocol')
-
-        # add hostkey_verify if not exist
-        if 'hostkey_verify' not in connection_info:
-            connection_info['hostkey_verify'] = False
-
-        connection_info = {k: getattr(self, k, v) for k, v in connection_info.items()}
+        defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
 
         try:
-            self.session.connect(**connection_info)
+            self.session.connect(**defaults)
         except Exception:
             if self.session.transport:
                 self.session.close()
             raise
+
+        @atexit.register
+        def cleanup():
+            if self.session.transport:
+                self.session.close()
 
     def disconnect(self):
         '''disconnect
@@ -430,7 +449,6 @@ class Netconf(manager.Manager, BaseConnection):
 
         rpc = RawRPC(session = self.session,
                      device_handler = self._device_handler,
-                     async = False,
                      timeout = timeout,
                      raise_mode = operations.rpc.RaiseMode.NONE)
 
@@ -447,10 +465,13 @@ class Netconf(manager.Manager, BaseConnection):
 
         return rpc._request(msg).xml
 
-    def __getattr__(self, attr):
+    def __getattr__(self, method):
         # avoid the __getattr__ from Manager class
-        raise AttributeError("'%s' object has no attribute '%s'"
-                             % (self.__class__.__name__, attr))
+        if method in manager.VENDOR_OPERATIONS or method in manager.OPERATIONS:
+            return super().__getattr__(method)
+        else:
+            raise AttributeError("'%s' object has no attribute '%s'"
+                                 % (self.__class__.__name__, method))
 
 class RawRPC(operations.rpc.RPC):
     '''RawRPC

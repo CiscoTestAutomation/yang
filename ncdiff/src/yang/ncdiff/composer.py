@@ -1,5 +1,4 @@
 import re
-import json
 import logging
 from lxml import etree
 from ncclient import xml_

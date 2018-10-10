@@ -12,7 +12,7 @@ from .model import ModelDiff
 from .errors import ConfigError, ModelMissing, ModelIncompatible
 from .netconf import NetconfParser, NetconfCalculator
 from .composer import Composer
-from .gnmi_pb2 import SetRequest, GetResponse
+from .proto.gnmi.gnmi_pb2 import SetRequest, GetResponse
 from .restconf import RestconfParser, RestconfCalculator
 from .calculator import BaseCalculator
 
@@ -379,10 +379,13 @@ class Config(object):
 
             # clean up empty containers
             child_schema_node = self.device.get_schema_node(child)
+            if child_schema_node is None:
+                raise ConfigError("schema node of the config node {} cannot " \
+                                  "be found:\n{}" \
+                                  .format(self.device.get_xpath(child), self))
             if len(child) == 0 and \
                child_schema_node.get('type') == 'container' and \
                child_schema_node.get('presence') != 'true':
-#               print(self.device.get_xpath(child))
                 node.remove(child)
 
     def _node_filter(self, node, ancestors, filtrates):

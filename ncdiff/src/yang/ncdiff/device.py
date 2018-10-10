@@ -29,21 +29,8 @@ special_prefixes = {
     ncEvent_url: 'ncEvent',
     }
 
-class OpExecutorFix(manager.OpExecutor):
 
-    def __new__(cls, name, bases, attrs):
-        def make_wrapper(op_cls):
-            def wrapper(self, *args, **kwds):
-                return self.execute(op_cls, *args, **kwds)
-            wrapper.__doc__ = op_cls.request.__doc__
-            return wrapper
-        for op_name, op_cls in six.iteritems(manager.OPERATIONS):
-            if op_name in attrs: continue
-            attrs[op_name] = make_wrapper(op_cls)
-        return super(manager.OpExecutor, cls).__new__(cls, name, bases, attrs)
-
-
-class ModelDevice(Netconf, metaclass=OpExecutorFix):
+class ModelDevice(Netconf):
     '''ModelDevice
 
     Abstraction of a device that supports NetConf protocol and YANG models.
@@ -693,10 +680,23 @@ class ModelDevice(Netconf, metaclass=OpExecutorFix):
             >>>
         '''
 
+        def possible_part1():
+            if src[0] == Tag.NAME:
+                return [i[0] for i in self.namespaces]
+            elif src[0] == Tag.PREFIX:
+                return [i[1] for i in self.namespaces] + \
+                       list(special_prefixes.values())
+            else:
+                return [i[2] for i in self.namespaces] + \
+                       list(special_prefixes.keys())
+
         def split_tag(tag):
             ret = re.search(src[2][0], tag)
             if ret:
-                return (ret.group(1), ret.group(2))
+                if ret.group(1) in possible_part1():
+                    return (ret.group(1), ret.group(2))
+                else:
+                    return ('', tag)
             else:
                 return ('', tag)
 
@@ -707,15 +707,20 @@ class ModelDevice(Netconf, metaclass=OpExecutorFix):
                 return tag_name
 
         def convert(ns):
-            if src[0] == dst[0]:
-                return ns
-            for i in self.namespaces:
-                if ns == i[src[0]]:
-                    return i[dst[0]]
-            if src[0] == Tag.NAMESPACE and ns in special_prefixes:
-                return special_prefixes[ns]
-            raise ValueError("{} '{}' does not exist in device attribute " \
-                             "'namespaces' when parsing tag '{}'" \
+            matches = [i for i in self.namespaces if i[src[0]] == ns]
+            c = len(matches)
+            if c > 1:
+                raise ModelError("device supports more than one {} '{}': {}" \
+                                 .format(Tag.STR[src[0]], ns, matches))
+            if c == 1:
+                return matches[0][dst[0]]
+            if src[0] != Tag.NAME and dst[0] != Tag.NAME:
+                special = [('', v, k) for k, v in special_prefixes.items()]
+                matches = [i for i in special if i[src[0]] == ns]
+                if len(matches) == 1:
+                    return matches[0][dst[0]]
+            raise ValueError("device does not support {} '{}' " \
+                             "when parsing tag '{}'" \
                              .format(Tag.STR[src[0]], ns, tag))
 
         tag_ns, tag_name = split_tag(tag)

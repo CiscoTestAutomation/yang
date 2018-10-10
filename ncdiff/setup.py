@@ -171,11 +171,12 @@ setup(
     # package dependencies
     install_requires =  [
         'pyang >= 1.7.3',
+        'ncclient >= 0.6.3',
         'requests >= 2.18.4',
         'grpcio >= 1.7.3',
         'grpcio-tools >= 1.7.3',
         'xmljson >= 0.1.9',
-        'yang.connector >= 2.0.2',
+        'yang.connector >= 2.0.3',
     ],
 
     # any additional groups of dependencies.

@@ -10,18 +10,30 @@ from ats.connections import BaseConnection
 from unittest.mock import Mock, patch
 import yang.connector
 
+
+class MyTransportSession():
+
+    def __init__(self):
+        pass
+
+    def close(self):
+        pass
+
+
 class MySSHSession():
 
     def __init__(self):
         self._is_stopped = False
         self._connected = False
+        self.transport = None
 
     @property
     def connected(self):
         return self._connected
 
-    def connect(self, host=None, port=None, username=None, password=None, hostkey_verify=None):
+    def connect(self, **kwargs):
         self._connected = True
+        self.transport = MyTransportSession()
 
     def close(self):
         self._connected = False
@@ -43,14 +55,16 @@ class MySSHSession2():
     def __init__(self):
         self._is_stopped = False
         self._connected = False
+        self.transport = None
 
     @property
     def connected(self):
         return self._connected
 
-    def connect(self, host=None, port=None, username=None, password=None, hostkey_verify=None):
-        if username == 'admin' and password == 'admin':
+    def connect(self, **kwargs):
+        if kwargs['username'] == 'admin' and kwargs['password'] == 'admin':
             self._connected = True
+            self.transport = MyTransportSession()
 
     def close(self):
         self._connected = False
@@ -101,8 +115,7 @@ class MyRPCReply():
 
 class MyCloseSession():
 
-    def __init__(self, session, device_handler=None, async=None,
-                                timeout=None, raise_mode=None):
+    def __init__(self, session, **kwargs):
         pass
 
     def request(self):

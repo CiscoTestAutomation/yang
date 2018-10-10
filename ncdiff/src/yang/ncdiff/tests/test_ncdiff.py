@@ -18,19 +18,30 @@ def my_execute(*args, **kwargs):
 Netconf.execute = my_execute
 
 
+class MyTransportSession():
+
+    def __init__(self):
+        pass
+
+    def close(self):
+        pass
+
+
 class MySSHSession():
 
     def __init__(self):
         self._is_stopped = False
         self._connected = False
         self._server_capabilities = server_capabilities
+        self.transport = None
 
     @property
     def connected(self):
         return self._connected
 
-    def connect(self, host=None, port=None, username=None, password=None, hostkey_verify=None):
+    def connect(self, **kwargs):
         self._connected = True
+        self.transport = MyTransportSession()
 
     def close(self):
         self._connected = False
