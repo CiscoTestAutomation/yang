@@ -3,7 +3,7 @@ Interfaces (DMI), in particular, an implementation of Netconf client by
 wrapping up ncclient package. Restconf implementation is coming next."""
 
 # metadata
-__version__ = '2.0.3'
+__version__ = '2.0.4'
 __author__ = ('Jonathan Yang <yuekyang@cisco.com>',
               'Siming Yuan <siyuan@cisco.com',)
 __contact__ = 'yang-python@cisco.com'
@@ -21,6 +21,25 @@ from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
 from ats.connections import BaseConnection
+
+# try to record usage statistics
+#  - only internal cisco users will have stats.CesMonitor module
+#  - below code does nothing for DevNet users -  we DO NOT track usage stats
+#    for PyPI/public/customer users
+try:
+    # new internal cisco-only pkg since devnet release
+    from ats.cisco.stats import CesMonitor
+except Exception:
+    try:
+        # legacy pyats version, stats was inside utils module
+        from ats.utils.stats import CesMonitor
+    except Exception:
+        CesMonitor = None
+
+finally:
+    if CesMonitor is not None:
+        # CesMonitor exists -> this is an internal cisco user
+        CesMonitor(action = __name__, application='pyATS Packages').post()
 
 # create a logger for this module
 logger = logging.getLogger(__name__)
