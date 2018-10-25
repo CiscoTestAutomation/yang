@@ -350,17 +350,18 @@ class RestconfComposer(Composer):
             for node in nodes:
                 default_ns, id = self.device.convert_tag(default_ns, node.tag,
                                                          dst=Tag.JSON_NAME)
-                ret += '/' + quote(id)
+                ret += '/' + quote(id, safe='')
                 if self.is_config:
                     n = Composer(self.device, node)
                     if n.schema_node.get('type') == 'leaf-list':
                         if node != self.node or instance:
-                            ret += '={}'.format(quote(node.text))
+                            ret += '={}'.format(quote(node.text, safe=''))
                     elif n.schema_node.get('type') == 'list':
                         if node != self.node or instance:
                             values = []
                             for key in n.keys:
-                                values.append(quote(node.find(key).text))
+                                values.append(quote(node.find(key).text,
+                                                    safe=''))
                             ret += '={}'.format(','.join(values))
             return ret
 
