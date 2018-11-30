@@ -1,6 +1,13 @@
 .. _yang.connector:
 
 
+Module yang.connector was initially developed internally in Cisco and is now available to the general public through open-source. It is integrated into the modular architecture of pyATS framework.
+
+Docs: `https://yangconnector.readthedocs.io/en/latest/ <https://yangconnector.readthedocs.io/en/latest/>`_
+
+GitHub: `https://github.com/CiscoTestAutomation/yang.git <https://github.com/CiscoTestAutomation/yang.git>`_
+
+
 Introduction
 ============
 
@@ -420,64 +427,18 @@ Python Code:
 Installation
 ============
 
-yang.connector module requires pyATS, which will be briefly described first.
-Then yang.connector package installation section is followed.
+yang.connector module requires pyATS.
 
-pyATS Installation
-------------------
-
-User needs to create an empty directory and inside that new directory
-the installation script can be called.
+It can be installed from pypi server.
 
 .. code-block:: text
 
-    cd <your pyATS root instance directory>
-    /auto/pyats/bin/pyats-install
-
-.. note::
-
-    ``--help`` can be used to check installation options
-
-In order to activate your pyATS instances, i.e., your Python
-virtual environments, users may cd to your pyATS root directory and source the
-environment shell script, `env.sh` or `env.csh`, depending on your shell type.
-
-.. code-block:: text
-
-    cd <your pyATS root instance directory>
-    source env.sh
-
-For more information about pyATS
-`installation <http://wwwin-pyats.cisco.com/documentation/html/install/install.html>`_
-please check the documentation.
-
-yang.connector Package Installation
------------------------------------
-
-After pyATS installation, this package can be installed from pypi server
-(using `pip`).
-
-First-time installation steps (use `env.sh` as an example):
-
-.. code-block:: text
-
-    cd <your pyATS root instance directory>
     pip install yang.connector
 
-
-.. note::
-
-    yang.connector version 2.0.0 requires python package lxml and ncclient.
-    Depending on your system of 32-bit or 64-bit python, some other packages
-    need to be installed first. Please refer to some instructions in
-    `YDK Installation <https://wiki.cisco.com/display/PYATS/YDK#YDK-Installation>`_
-    as YDK has very similar dependencies.
-
-Steps to upgrade to latest (use `env.sh` as an example):
+To upgrade to the latest:
 
 .. code-block:: text
 
-    cd <your pyATS root instance directory>
     pip install --upgrade yang.connector
 
 

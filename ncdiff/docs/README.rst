@@ -1,6 +1,15 @@
 .. _yang.ncdiff:
 
 
+Module yang.ncdiff was initially developed internally in Cisco and is now
+available to the general public through open-source. It is integrated into the
+modular architecture of pyATS framework.
+
+Docs: `https://yangncdiff.readthedocs.io/en/latest/ <https://yangncdiff.readthedocs.io/en/latest/>`_
+
+GitHub: `https://github.com/CiscoTestAutomation/yang.git <https://github.com/CiscoTestAutomation/yang.git>`_
+
+
 Introduction
 ============
 
@@ -104,77 +113,21 @@ Others are required directly:
 * `grpcio <https://pypi.org/project/grpcio/>`_
 * `grpcio-tools <https://pypi.org/project/grpcio-tools/>`_
 * `xmljson <https://pypi.org/project/xmljson/>`_
-* `yang.connector <http://wwwin-pyats.cisco.com/cisco-shared/yang/connector/html/>`_
+* `yang.connector <https://yangconnector.readthedocs.io/en/latest/>`_
 
 Installation of these packages are normally smooth. Based on our support
 experience, most issues are related to lxml and paramiko.
 
-lxml Installation
------------------
+This package can be installed from pypi server.
 
-lxml package is available on Internet so your server may need proxy setup to
-access external sites. `lab_proxy.sh` is for bash and `lab_proxy.csh` is for
-csh.
-
-.. code-block:: text
-
-    source /auto/pyats/bin/lab_proxy.sh
-
-Next install lxml:
-
-.. code-block:: text
-
-    pip install lxml
-
-.. note::
-
-    Depending on your system of 32-bit or 64-bit python, some other packages
-    need to be installed first. Please refer to some instructions in
-    `YDK Installation <https://wiki.cisco.com/display/PYATS/YDK#YDK-Installation>`_
-    as YDK has very similar dependencies. Another useful resource is
-    `PieStack <http://piestack.cisco.com/>`_
-
-Verify whether lxml installation is successful (you are on the good path if you
-do not see any error):
-
-.. code-block:: text
-
-    bash$ python
-    Python 3.4.1 (default, Jul 20 2016, 07:21:38)
-    [GCC 4.4.7 20120313 (Red Hat 4.4.7-16)] on linux
-    Type "help", "copyright", "credits" or "license" for more information.
-    >>> from lxml import etree
-    >>>
-
-paramiko Installation
----------------------
-
-When you have a relatively new version of CEL on your server, paramiko
-installation could be straight forward.
-
-.. code-block:: text
-
-    pip install paramiko
-
-Otherwise, try paramiko version 1.15.3:
-
-.. code-block:: text
-
-    pip install paramiko==1.15.3
-
-ncdiff Installation
--------------------
-
-This package can be installed from Cisco pypi server.
-
-First-time installation steps:
+First-time installation:
 
 .. code-block:: text
 
     pip install yang.ncdiff
 
 
-Steps to upgrade to latest:
+To upgrade to the latest:
 
 .. code-block:: text
 
