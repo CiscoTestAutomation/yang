@@ -45,7 +45,7 @@ Features
 Upcoming features include support for
 Restconf, and operational data model parser objects for Netconf and
 Restconf with integration of new
-`Genie <https://developer.cisco.com/site/pyats/docs/packages/>`_.
+`Genie <https://pubhub.devnetcloud.com/media/pyats-packages/docs/genie/index.html>`_.
 
 Comparison to Other Netconf Clients
 -----------------------------------
