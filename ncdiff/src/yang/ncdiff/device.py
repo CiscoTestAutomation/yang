@@ -169,7 +169,7 @@ class ModelDevice(Netconf):
 
         Code Example::
 
-            >>> from ats.topology import loader
+            >>> from pyats.topology import loader
             >>> testbed = loader.load('/users/yuekyang/projects/asr21.yaml')
             >>> device = testbed.devices['asr21']
             >>> device.connect(alias='nc', via='netconf')
@@ -235,7 +235,7 @@ class ModelDevice(Netconf):
 
         Code Example::
 
-            >>> from ats.topology import loader
+            >>> from pyats.topology import loader
             >>> testbed = loader.load('/users/yuekyang/projects/asr21.yaml')
             >>> device = testbed.devices['asr21']
             >>> device.connect(alias='nc', via='netconf')

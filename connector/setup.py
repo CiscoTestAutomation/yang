@@ -182,6 +182,9 @@ setup(
         'paramiko >= 1.15.1',
         'lxml >= 3.3.0',
         'ncclient >= 0.5.2',
+        'pyats.log >= 5.0.0',
+        'pyats.connections >= 5.0.0',
+        'pyats.topology >= 5.0.0',
     ],
 
     # any additional groups of dependencies.

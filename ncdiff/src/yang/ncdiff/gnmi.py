@@ -801,7 +801,8 @@ class gNMICalculator(BaseCalculator):
                 generate_delete(child_o)
             elif schema_node.get('type') == 'leaf-list':
                 if child_o.tag not in done_list:
-                    if list_is_empty(child_o.tag):
+                    child_s = node_self.find(child_o.tag)
+                    if child_s is None:
                         generate_delete(child_o, instance=False)
                     else:
                         generate_replace(child_s, instance=False)

@@ -6,7 +6,7 @@ from lxml import etree
 from yang.ncdiff import *
 from yang.ncdiff.errors import *
 from yang.connector import Netconf
-from ats.topology import loader
+from pyats.topology import loader
 
 
 def my_execute(*args, **kwargs):

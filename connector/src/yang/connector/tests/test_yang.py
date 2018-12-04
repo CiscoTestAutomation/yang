@@ -5,8 +5,8 @@ import unittest
 from ncclient import manager
 from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
-from ats.topology import loader
-from ats.connections import BaseConnection
+from pyats.topology import loader
+from pyats.connections import BaseConnection
 from unittest.mock import Mock, patch
 import yang.connector
 

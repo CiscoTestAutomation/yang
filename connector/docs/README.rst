@@ -39,16 +39,13 @@ Features
   of pyATS Connection Manager allows us to establish Netconf connections
   seamlessly in pyATS topology model. More details of Connection Manager can be
   found in
-  `Connection Meta <http://wwwin-pyats.cisco.com/documentation/latest/connections/index.html>`_
+  `Connection Manager <https://pubhub.devnetcloud.com/media/pyats/docs/connections/manager.html>`_
   .
 
 Upcoming features include support for
 Restconf, and operational data model parser objects for Netconf and
 Restconf with integration of new
-`Genie <http://wwwin-pyats.cisco.com/cisco-shared/genie/latest/>`_
-and
-`Metaparser <http://wwwin-pyats.cisco.com/cisco-shared/metaparser/latest/>`_
-model.
+`Genie <https://developer.cisco.com/site/pyats/docs/packages/>`_.
 
 Comparison to Other Netconf Clients
 -----------------------------------
@@ -139,7 +136,7 @@ Python Code:
 
 .. code-block:: text
 
-    >>> from ats.topology import loader
+    >>> from pyats.topology import loader
     >>> testbed = loader.load('/users/xxx/xxx/asr22.yaml')
     >>> device = testbed.devices['asr21']
     >>> device.connect(alias='nc', via='netconf')

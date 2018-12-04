@@ -9,7 +9,7 @@ connect to a Netconf device
 ---------------------------
 
 Similar to `yang.connector
-<http://wwwin-pyats.cisco.com/cisco-shared/yang/connector/html/>`_, users may
+<https://yangconnector.readthedocs.io/en/latest/>`_, users may
 create a ModelDevice instance as a device connection instance. Say there is a
 YAML topology file:
 
@@ -47,7 +47,7 @@ Next, prepare Netconf connection and create an instance of ModelDevice:
 
 .. code-block:: text
 
-    >>> from ats.topology import loader
+    >>> from pyats.topology import loader
     >>> testbed = loader.load('/users/xxx/projects/asr22.yaml')
     >>> device = testbed.devices['asr22']
     >>> device.connect(alias='nc', via='netconf')

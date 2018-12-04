@@ -3,11 +3,11 @@ Interfaces (DMI), in particular, an implementation of Netconf client by
 wrapping up ncclient package. Restconf implementation is coming next."""
 
 # metadata
-__version__ = '2.0.4'
+__version__ = '3.0.0'
 __author__ = ('Jonathan Yang <yuekyang@cisco.com>',
               'Siming Yuan <siyuan@cisco.com',)
 __contact__ = 'yang-python@cisco.com'
-__copyright__ = 'Cisco Systems, Inc. Cisco Confidential'
+__copyright__ = 'Cisco Systems, Inc.'
 
 
 import re
@@ -20,7 +20,7 @@ from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
-from ats.connections import BaseConnection
+from pyats.connections import BaseConnection
 
 # try to record usage statistics
 #  - only internal cisco users will have stats.CesMonitor module
@@ -80,7 +80,7 @@ class Netconf(manager.Manager, BaseConnection):
 
     Code Example::
 
-        >>> from ats.topology import loader
+        >>> from pyats.topology import loader
         >>> testbed = loader.load('/users/xxx/xxx/asr22.yaml')
         >>> device = testbed.devices['asr22']
         >>> device.connect(alias='nc', via='netconf')
@@ -265,7 +265,7 @@ class Netconf(manager.Manager, BaseConnection):
 
         Code Example::
 
-            >>> from ats.topology import loader
+            >>> from pyats.topology import loader
             >>> testbed = loader.load('/users/xxx/xxx/asr22.yaml')
             >>> device = testbed.devices['asr22']
             >>> device.connect(alias='nc', via='netconf')
@@ -435,7 +435,7 @@ class Netconf(manager.Manager, BaseConnection):
 
         Code Example::
 
-            >>> from ats.topology import loader
+            >>> from pyats.topology import loader
             >>> testbed = loader.load('/users/xxx/xxx/asr_20_22.yaml')
             >>> device = testbed.devices['asr22']
             >>> device.connect(alias='nc', via='netconf')

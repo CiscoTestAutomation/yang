@@ -175,7 +175,7 @@ setup(
         'grpcio >= 1.7.3',
         'grpcio-tools >= 1.7.3',
         'xmljson >= 0.1.9',
-        'yang.connector >= 2.0.3',
+        'yang.connector >= 3.0.0',
     ],
 
     # any additional groups of dependencies.

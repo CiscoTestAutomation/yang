@@ -13,7 +13,7 @@ import subprocess
 
 from tempfile import NamedTemporaryFile
 
-from ats.log.utils import banner
+from pyats.log.utils import banner
 
 def collect_unittest_files(top):
     files = []
@@ -47,8 +47,8 @@ class UnittestSubprocess(object):
 
         cwd = os.path.dirname(os.path.realpath(os.path.abspath(testable)))
 
-        cmd = ('python', 
-               '-m', 'unittest', 
+        cmd = ('python',
+               '-m', 'unittest',
                os.path.splitext(os.path.basename(testable))[0])
 
         self.process = subprocess.Popen(cmd,
@@ -126,7 +126,7 @@ if __name__ == '__main__':
                         type = str,
                         default = os.getcwd())
     args = parser.parse_args()
-    
+
     done = []
     processes = []
 
@@ -139,7 +139,7 @@ if __name__ == '__main__':
         processes.append(p)
 
         print('%-67s (pid: %5s)' % (p.name, p.pid))
-    
+
     total = len(processes)
     print('\n' + banner('- Results -'))
 
@@ -147,9 +147,9 @@ if __name__ == '__main__':
         # wait for everything to finish
         while processes:
             for p in processes:
-                
+
                 time.sleep(0.25)
-                
+
                 if p.poll() is not None:
                     done.append(p)
                     processes.remove(p)
@@ -170,7 +170,7 @@ if __name__ == '__main__':
             print('%-64s- ' % p.name + RED + 'KILLED' + ENDC +
                                              ' (%2s/%-2s)' % (len(done), total))
 
-    
+
     print()
     print()
 

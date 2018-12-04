@@ -9,3 +9,4 @@ Changelog
    2017/april
    2017/may
    2018/october
+   2018/november

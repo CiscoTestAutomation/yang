@@ -4,10 +4,10 @@ payload of a Netconf get-config reply, and a diff is the payload of a
 edit-config message."""
 
 # metadata
-__version__ = '2.0.3'
+__version__ = '3.0.0'
 __author__ = 'Jonathan Yang <yuekyang@cisco.com>'
 __contact__ = 'yang-python@cisco.com'
-__copyright__ = 'Cisco Systems, Inc. Cisco Confidential'
+__copyright__ = 'Cisco Systems, Inc.'
 
 
 import json
