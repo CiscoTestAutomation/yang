@@ -136,7 +136,7 @@ setup(
     # project licensing
     license = 'Apache 2.0',
 
-    platforms =  ['CEL',],
+    platforms =  ['Linux',],
 
     # see https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers = [
@@ -181,10 +181,7 @@ setup(
     install_requires =  [
         'paramiko >= 1.15.1',
         'lxml >= 3.3.0',
-        'ncclient >= 0.5.2',
-        'pyats.log >= 5.0.0',
-        'pyats.connections >= 5.0.0',
-        'pyats.topology >= 5.0.0',
+        'ncclient >= 0.6.6',
     ],
 
     # any additional groups of dependencies.

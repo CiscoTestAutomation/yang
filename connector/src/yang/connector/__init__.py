@@ -3,7 +3,7 @@ Interfaces (DMI), in particular, an implementation of Netconf client by
 wrapping up ncclient package. Restconf implementation is coming next."""
 
 # metadata
-__version__ = '3.0.0'
+__version__ = '3.0.1'
 __author__ = ('Jonathan Yang <yuekyang@cisco.com>',
               'Siming Yuan <siyuan@cisco.com',)
 __contact__ = 'yang-python@cisco.com'
@@ -20,7 +20,14 @@ from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
-from pyats.connections import BaseConnection
+try:
+    from pyats.connections import BaseConnection
+except ImportError:
+    try:
+        from ats.connections import BaseConnection
+    except ImportError:
+        raise ImportError('Cannot import pyATS - make sure pyATS is installed ' 
+                          'in your environment') from None
 
 # try to record usage statistics
 #  - only internal cisco users will have stats.CesMonitor module
@@ -35,7 +42,6 @@ except Exception:
         from ats.utils.stats import CesMonitor
     except Exception:
         CesMonitor = None
-
 finally:
     if CesMonitor is not None:
         # CesMonitor exists -> this is an internal cisco user
@@ -134,19 +140,12 @@ class Netconf(manager.Manager, BaseConnection):
         '''
         __init__ instantiates a single connection instance.
         '''
+        # set defaults
+        kwargs.setdefault('timeout', 30)
 
         # instanciate BaseConnection
         # (could use super...)
         BaseConnection.__init__(self, *args, **kwargs)
-
-        # default values
-        defaults = {
-            'async_mode': False,
-            'raise_mode': 0,
-            'timeout': 30,
-            }
-        defaults = {k: self.connection_info.get(k, v) for k, v in defaults.items()}
-        defaults = {k: kwargs.get(k, v) for k, v in defaults.items()}
 
         # shortwire Ncclient device handling portion
         # and create just the DeviceHandler
@@ -162,9 +161,7 @@ class Netconf(manager.Manager, BaseConnection):
         # (can't use super due to mro change)
         manager.Manager.__init__(self, session = session,
                                        device_handler = device_handler,
-                                       *args, **defaults)
-        for item in ['async_mode', 'raise_mode']:
-            setattr(self, item, defaults[item])
+                                       timeout = self.timeout)
 
     @property
     def session(self):
@@ -307,7 +304,8 @@ class Netconf(manager.Manager, BaseConnection):
         defaults.update(self.connection_info)
 
         # remove items
-        disregards = ['class', 'model', 'protocol', 'async_mode', 'raise_mode']
+        disregards = ['class', 'model', 'protocol', 
+                      'async_mode', 'raise_mode', 'credentials']
         defaults = {k: v for k, v in defaults.items() if k not in disregards}
 
         # rename ip -> host, cast to str type
@@ -317,6 +315,17 @@ class Netconf(manager.Manager, BaseConnection):
         # rename user -> username
         if 'user' in defaults:
             defaults['username'] = str(defaults.pop('user'))
+
+        # check credentials
+        if self.connection_info.get('credentials'):
+            try:
+                defaults['username'] = str(self.connection_info['credentials']['netconf']['username'])
+            except Exception:
+                pass
+            try:
+                defaults['password'] = str(self.connection_info['credentials']['netconf']['password'])
+            except Exception:
+                pass
 
         defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
 
