@@ -51,7 +51,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = 'Cisco-Shared (pyATS)'
+project = 'Yang Connector'
 copyright = '2014-2018, Cisco Systems'
 
 # The version info for the project you're documenting, acts as replacement for

@@ -43,15 +43,15 @@ help:
 	@echo "clean            : Remove build artifacts"
 	@echo "develop          : Build and install development package"
 	@echo "undevelop        : Uninstall development package"
-	@echo "docs             : Build Sphinx documentation for this package"
+	@echo "html             : Build Sphinx documentation for this package"
 
-docs:
+html:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Building $(PKG_NAME) documentation for preview: $@"
 	@echo ""
 
-	@./setup.py docs
+	@sphinx-build -b html -c docs -d ./__build__/documentation/doctrees docs/ ./__build__/documentation/html
 
 	@echo "Completed building docs for preview."
 	@echo ""
