@@ -105,32 +105,37 @@ Connect to Netconf interface.
 Topology YAML Example:
 
 .. code-block:: text
-
     devices:
         asr22:
             type: 'ASR'
-            tacacs:
-                login_prompt: "login:"
-                password_prompt: "Password:"
-                username: "admin"
-            passwords:
-                tacacs: admin
-                enable: admin
-                line: admin
+            credentials:
+                default:
+                    username: admin
+                    password: admin
             connections:
                 a:
                     protocol: telnet
                     ip: "1.2.3.4"
                     port: 2004
+                    prompts:
+                        login: "login:"
+                        password: "Password:"
                 vty:
                     protocol : telnet
                     ip : "2.3.4.5"
+                    prompts:
+                        password: "Password:"
                 netconf:
                     class: yang.connector.Netconf
                     ip : "2.3.4.5"
                     port: 830
                     username: admin
                     password: admin
+                    credentials:
+                        netconf:
+                            username: ncadmin
+                            password: ncpw
+
 
 Python Code:
 

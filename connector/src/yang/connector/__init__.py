@@ -3,9 +3,10 @@ Interfaces (DMI), in particular, an implementation of Netconf client by
 wrapping up ncclient package. Restconf implementation is coming next."""
 
 # metadata
-__version__ = '19.6'
+__version__ = '19.7'
 __author__ = ('Jonathan Yang <yuekyang@cisco.com>',
-              'Siming Yuan <siyuan@cisco.com',)
+              'Siming Yuan <siyuan@cisco.com',
+              'Myles Dear <mdear@cisco.com',)
 __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc.'
 
@@ -28,6 +29,11 @@ except ImportError:
     except ImportError:
         raise ImportError('Cannot import pyATS - make sure pyATS is installed ' 
                           'in your environment') from None
+try:
+    from pyats.utils.secret_strings import to_plaintext
+except ImportError:
+    def to_plaintext(string):
+        return(str(string))
 
 # try to record usage statistics
 #  - only internal cisco users will have stats.CesMonitor module
@@ -323,7 +329,7 @@ class Netconf(manager.Manager, BaseConnection):
             except Exception:
                 pass
             try:
-                defaults['password'] = str(self.connection_info['credentials']['netconf']['password'])
+                defaults['password'] = to_plaintext(self.connection_info['credentials']['netconf']['password'])
             except Exception:
                 pass
 
