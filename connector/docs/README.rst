@@ -105,6 +105,7 @@ Connect to Netconf interface.
 Topology YAML Example:
 
 .. code-block:: text
+
     devices:
         asr22:
             type: 'ASR'
