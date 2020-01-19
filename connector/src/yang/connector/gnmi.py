@@ -1,5 +1,6 @@
 import traceback
 import os
+import logging
 from collections import OrderedDict
 
 from grpc._channel import _Rendezvous
@@ -45,96 +46,36 @@ finally:
 logger = logging.getLogger(__name__)
 
 
-class GnmiSession:
+class Gnmi(BaseConnection):
     """Session handling for gNMI connections."""
 
-    instances = {}
+    def __init__(self, *args, **kwargs):
 
-    @classmethod
-    def get(cls, key, user, custom_log=None):
-        """Retrieve or create a GNMI session instance.
+        super().__init__(*args, **kwargs)
 
-        The key can be a string or a device profile.
-
-        Args:
-          key (str): Device name or uses the base.profile_name as key.
-        Returns:
-          GnmiSession
-        """
-        # accept device name or profile
-        if not isinstance(key, YSDeviceProfile):
-            dev_profile = YSDeviceProfile.get(key)
-        else:
-            dev_profile = key
-            key = dev_profile.base.profile_name
-
-        if key not in cls.instances:
-            if dev_profile.gnmi.enabled:
-                cls.instances[key] = cls(key, user, custom_log)
-            else:
-                raise ValueError("gNMI not enabled in device profile")
-
-        return cls.instances[key]
-
-    @classmethod
-    def destroy(cls, key):
-        """Remove the session instance from the cache.
-
-        The key can be a string or a device profile.
-
-        Args:
-          key (str): Device name or uses the base.profile_name as key.
-        """
-        if isinstance(key, YSDeviceProfile):
-            key = key.base.profile_name
-
-        if key in cls.instances:
-            session = cls.instances[key]
-            if session.connected:
-                session.disconnect()
-            del cls.instances[key]
-
-    def __init__(self, key, user, custom_log=None):
-        self.key = key
-        self.dev_profile = YSDeviceProfile.get(key)
         self.creds = None
         self.channel = None
         self.stub = None
-        if custom_log:
-            self.log = custom_log
-        else:
-            # Adding yangsuite logger
-            self.log = log
+        self.log = kwargs.ger('custom_log', logger)
 
-        certificate = None
+        # TODO: self.connection_info probably not there until connect is called
+        certificate = self.connection_info.get('certificate', None)
 
-        if self.dev_profile.gnmi.secure:
-            if hasattr(self.dev_profile.base, 'certificate'):
-                certificate = self.dev_profile.base.certificate
-
-        if user and certificate:
-            user_device_path = get_path('user_devices_dir',
-                                        user=user)
-            if os.path.isfile(
-                os.path.join(user_device_path,
-                             self.dev_profile.base.profile_name,
-                             certificate)):
-                with open(
-                    os.path.join(user_device_path,
-                                 self.dev_profile.base.profile_name,
-                                 certificate), 'rb') as fd:
-                    self.creds = grpc.ssl_channel_credentials(fd.read())
-            else:
+        if certificate:
+            if not os.path.isfile(certificate):
                 self.log.error("{0} certificate not found".format(
                     certificate
                 ))
                 self.log.info("Trying insecure channel")
+            else:
+                with open(certificate), 'rb') as fd:
+                    self.creds = grpc.ssl_channel_credentials(fd.read())
 
         self.metadata = [
             ('username', self.dev_profile.base.username),
             ('password', self.dev_profile.base.password),
         ]
-        self.timeout = self.dev_profile.base.timeout
+        self.timeout = kwargs.get('timeout', 30)
         self.connect()
 
     @property
@@ -142,7 +83,7 @@ class GnmiSession:
         """Return True if session is connected."""
         return self.channel
 
-    def send_config(self, cmd, lock_retry=30):
+    def configure(self, cmd, lock_retry=30):
         """Send any Set data command.
 
         Args:
@@ -160,18 +101,18 @@ class GnmiSession:
             gnmi.fixup_json_val_from_base64_recursive(request_dict)
             return request_dict
         except grpc.RpcError as exe:
-            # if "Database is locked" in exe.details() and lock_retry:
-            #     time.sleep(1)
-            #     self.log.info(
-            #         'gNMI: Datastore is locked, retrying {0}'.format(
-            #             str(lock_retry)
-            #         )
-            #     )
-            #     self.send_config(cmd, lock_retry-1)
+            if "Database is locked" in exe.details() and lock_retry:
+                time.sleep(1)
+                self.log.info(
+                    'gNMI: Datastore is locked, retrying {0}'.format(
+                        str(lock_retry)
+                    )
+                )
+                self.send_config(cmd, lock_retry-1)
             self.log.error('{0}: {1}'.format(exe.code(), exe.details()))
             raise Exception('{0}: {1}'.format(exe.code(), exe.details()))
 
-    def send_exec(self, cmd):
+    def execute(self, cmd):
         """Send any Get data commmand.
 
         Args:
@@ -187,11 +128,15 @@ class GnmiSession:
         gnmi.fixup_json_val_from_base64_recursive(request_dict)
         return request_dict
 
-    def get_capabilities(self, request):
+    def capabilities(self, request):
         """Retrieve capabilities from device."""
         if not self.connected:
             self.connect()
         return self.stub.Capabilities(request, self.timeout, self.metadata)
+
+    def subscribe(self, cmd):
+        """Subscribe to notification stream."""
+        return ""
 
     def connect(self):
         """Connect to gRPC device."""

@@ -1,15 +1,4 @@
-"""yang.connector module defines a set of classes that connect to Data Model
-Interfaces (DMI), in particular, an implementation of Netconf client by
-wrapping up ncclient package. Restconf implementation is coming next."""
-
-# metadata
-__version__ = '19.7'
-__author__ = ('Jonathan Yang <yuekyang@cisco.com>',
-              'Siming Yuan <siyuan@cisco.com',
-              'Myles Dear <mdear@cisco.com',)
-__contact__ = 'yang-python@cisco.com'
-__copyright__ = 'Cisco Systems, Inc.'
-
+"""netconf.py module is a wrapper around the ncclient package."""
 
 import re
 import time
