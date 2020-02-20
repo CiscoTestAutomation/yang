@@ -18,8 +18,10 @@ __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc.'
 
 
-from netconf import Netconf
+from .netconf import Netconf
+from .gnmi import Gnmi
 
 __all__ = (
     'Netconf',
+    'Gnmi',
 )

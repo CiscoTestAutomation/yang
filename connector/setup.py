@@ -122,8 +122,8 @@ setup(
     version = find_version('src', pkg_path, '__init__.py'),
 
     # descriptions
-    description =  'A NETCONF connector',
-    long_description = 'A NETCONF connector based on ncclient',
+    description =  'YANG defined interface API protocol connector',
+    long_description = 'Client capable of NETCONF and gNMI protocol',
 
     # the package's documentation page.
     url = 'https://github.com/CiscoTestAutomation/yang.git',
