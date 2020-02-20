@@ -10,19 +10,8 @@ from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
-try:
-    from pyats.connections import BaseConnection
-except ImportError:
-    try:
-        from ats.connections import BaseConnection
-    except ImportError:
-        raise ImportError('Cannot import pyATS - make sure pyATS is installed ' 
-                          'in your environment') from None
-try:
-    from pyats.utils.secret_strings import to_plaintext
-except ImportError:
-    def to_plaintext(string):
-        return(str(string))
+from pyats.connections import BaseConnection
+from pyats.utils.secret_strings import to_plaintext
 
 # try to record usage statistics
 #  - only internal cisco users will have stats.CesMonitor module
