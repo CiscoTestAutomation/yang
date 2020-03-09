@@ -10,6 +10,7 @@ from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
+from pyats.log.utils import banner
 from pyats.connections import BaseConnection
 from pyats.utils.secret_strings import to_plaintext
 
@@ -315,6 +316,7 @@ class Netconf(manager.Manager, BaseConnection):
 
         try:
             self.session.connect(**defaults)
+            logger.info(banner('NETCONF CONNECTED'))
         except Exception:
             if self.session.transport:
                 self.session.close()

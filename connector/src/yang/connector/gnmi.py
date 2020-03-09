@@ -211,7 +211,7 @@ class Gnmi(BaseConnection):
             opfields.append((val, xpath_str + '/' + name))
             return opfields
 
-    def decode_update(self, updates):
+    def decode_update(self, updates=[]):
         opfields=[]
         for update in updates['update']:
             xpath_str = self.path_elem_to_xpath(
@@ -245,15 +245,13 @@ class Gnmi(BaseConnection):
         resp_dict = json_format.MessageToDict(response)
         notifies = resp_dict.get('notification', [])
         ret_vals = []
-        opfields = []
         for notify in notifies:
+            ret_val = {}
             time_stamp = notify.get('timestamp', '')
             # TODO: convert time_stamp from str nanoseconds since epoch time
             # to datetime
-            updates = notify.get('update', [])
-            ret_val = {'time_stamp': time_stamp}
-            for update in updates:
-                ret_val['update'] = self.decode_update(update)
+            opfields = self.decode_update(notify)
+            ret_val['update'] = opfields
             deletes = notify.get('delete', [])
             deleted = []
             for delete in deletes:
@@ -339,8 +337,10 @@ class Gnmi(BaseConnection):
                 msg.get('get', []),
                 datatype
             )
+            log.info(str(resp))
             # Do fixup on response
             response = self.decode_notification(resp, ns)
+            # TODO: Do we need to send back deletes?
             return response
         except Exception as exe:
             log.error(banner('{0}: {1}'.format(exe.code(), exe.details())))
