@@ -4,6 +4,9 @@ import logging
 from collections import OrderedDict, Iterable
 import base64
 import json
+from threading import Thread
+from time import sleep
+from datetime import datetime
 from xml.etree.ElementPath import xpath_tokenizer_re
 
 from google.protobuf import json_format
@@ -37,6 +40,71 @@ finally:
 log = logging.getLogger(__name__)
 
 
+class GnmiNotification(Thread):
+        """Thread listening for event notifications from the device."""
+
+        def __init__(self, device, response, **request):
+            Thread.__init__(self)
+            self.device = device
+            self.terminate = False
+            self.log = logging.getLogger(__name__)
+            self.request = request
+            self.responses = response
+
+        @property
+        def request(self):
+            return self._request
+
+        @request.setter
+        def request(self, request={}):
+            self.returns = request.get('returns')
+            self.response_verify = request.get('verifier')
+            self.decode_response = request.get('decode')
+            self.namespace = request.get('namespace')
+            self.sub_mode = request['format'].get('sub_mode', 'SAMPLE')
+            self.encoding = request['format'].get('encoding', 'PROTO')
+            self.sample_interval = request['format'].get('sample_interval', 10)
+            self.stream_max = request['format'].get('stream_max', 0)
+
+        def process_opfields(self, response):
+            subscribe_resp = json_format.MessageToDict(response)
+            updates = subscribe_resp['update']
+            resp = self.decode_response(updates)
+            if resp:
+                self.response_verify(resp, self.returns.copy())
+            else:
+                self.log.error('No values in subscribe response')
+
+        def run(self):
+            """Check for inbound notifications."""
+            self.log.info("Starting notification thread")
+            t1 = datetime.now()
+            while not self.terminate:
+                self.log.info('Subscribe active')
+                for response in self.responses:
+                    if response.HasField('sync_response'):
+                        self.log.info('Subscribe syncing response')
+                    if response.HasField('update'):
+                        self.log.info(
+                            'Subscribe response {0}'.format(
+                                str(response)
+                            )
+                        )
+                        self.process_opfields(response)
+                        self.log.info('Subscribe opfields processed')
+                    if self.stream_max:
+                        t2 = datetime.now()
+                        td = t2 - t1
+                        self.log.info(
+                            'Subscribe time {0} seconds'.format(td.seconds)
+                        )
+                        if td.seconds > self.stream_max:
+                            self.terminate = True
+                            break
+
+            self.log.info("Terminating notification thread")
+
+
 class Gnmi(BaseConnection):
     """Session handling for gNMI connections."""
 
@@ -62,18 +130,24 @@ class Gnmi(BaseConnection):
         target = dev_args.get('host') + ':' + str(dev_args.get('port'))
         builder = ClientBuilder(target).set_os(self.client_os)
         # Gather certificate settings
-        root = dev_args.get('root_certificate', None)
+        root = dev_args.get('root_certificate')
+        if not root:
+            root = None
         if root and os.path.isfile(root):
             root = open(root, 'rb').read()
-        chain = dev_args.get('certificate_chain', None)
+        chain = dev_args.get('certificate_chain')
+        if not chain:
+            chain = None
         if chain and os.path.isfile(chain):
             chain = open(chain, 'rb').read()
-        private_key = dev_args.get('private_key', None)
+        private_key = dev_args.get('private_key', '')
+        if not private_key:
+            private_key = None
         if private_key and os.path.isfile(private_key):
             private_key= open(private_key, 'rb').read()
         builder.set_secure(root, private_key, chain)
         builder.set_ssl_target_override(
-            dev_args.get('ssl_name_override', None)
+            dev_args.get('ssl_name_override', '')
         )
         builder.set_call_authentication(
             dev_args.get('username'),
@@ -82,46 +156,12 @@ class Gnmi(BaseConnection):
         # builder.construct() returns client and connects the channel
         self.builder = builder
         self.gnmi = self.builder.construct()
-        log.info(banner('gNMI READY'))
+        log.info(banner('gNMI CONNECTED'))
 
     @property
     def connected(self):
         """Return True if session is connected."""
         return self.gnmi
-
-    def get_prefix(self, xpaths, prefix=[]):
-        """Return shortest common prefix for multiple xpaths."""
-        if not isinstance(xpaths, Iterable) or not xpaths:
-            # Done so lets return the prefix path
-            prefix = '/'.join([t[1] for t in prefix if t[1]])
-            if prefix:
-                prefix = '/' + prefix
-            return prefix
-        for x in xpaths:
-            if not prefix:
-                prefix = x.keys()
-                continue
-            if prefix == x.keys():
-                continue
-            prefix = xpath_tokenizer_re.findall(x.keys())
-            prefix = xpath_tokenizer_re.findall(xpaths[0])
-            return self.get_prefix(xpaths[1:], prefix)
-        else:
-            for i, t in enumerate(xpath_tokenizer_re.findall(xpaths[0])):
-                if len(prefix) <= i:
-                    # Same prefix so move on to next Xpath
-                    return self.get_prefix(xpaths[1:], prefix)
-                if prefix[i] != t:
-                    # End of matching Xpath tokens
-                    prefix = prefix[:i]
-                    if len(prefix) <= 1:
-                        # Found Xpath with no common prefix so bail out
-                        return self.get_prefix([], [])
-                    else:
-                        # Move on to next Xpath
-                        return self.get_prefix(xpaths[1:], prefix)
-            # Prefix matched so move on to next Xpath
-            return self.get_prefix(xpaths[1:], prefix)
 
     def path_elem_to_xpath(self, path_elem, namespace={}, opfields=[]):
         """Convert a Path structure to an Xpath."""
@@ -139,10 +179,11 @@ class Gnmi(BaseConnection):
                 for name, value in key.items():
                     for mod in namespace.values():
                         value = str(value).replace(mod + ':', '')
-                    opfields.append({
-                        'xpath': '/' + '/'.join(xpath) + '/' + name,
-                        'value': value
-                    })
+                    opfields.append((
+                        value,
+                        '/' + '/'.join(xpath) + '/' + name,
+
+                    ))
         return '/' + '/'.join(xpath)
 
     def get_opfields(self, val, xpath_str, opfields=[]):
@@ -151,7 +192,7 @@ class Gnmi(BaseConnection):
                 opfields = self.get_opfields(
                     dict_val,
                     xpath_str + '/' + name,
-                    opfields
+                    opfields=opfields
                 )
             return opfields
         elif isinstance(val, list):
@@ -167,14 +208,39 @@ class Gnmi(BaseConnection):
             xpath_list = xpath_str.split('/')
             name = xpath_list.pop()
             xpath_str = '/'.join(xpath_list)
-            # MessageToDict does not decode all values as strings
-            opfields.append(
-                {'xpath': xpath_str + '/' + name,
-                 'value': str(val)}
-            )
+            opfields.append((val, xpath_str + '/' + name))
             return opfields
 
-    def decode_response(self, response, namespace):
+    def decode_update(self, updates):
+        opfields=[]
+        for update in updates['update']:
+            xpath_str = self.path_elem_to_xpath(
+                update.get('path', {}),
+                opfields=opfields
+            )
+            if not xpath_str:
+                log.error('Xpath not determined from response')
+                return []
+            # TODO: the val depends on the encoding type
+            val = update.get('val', {}).get('jsonIetfVal', '')
+            if not val:
+                val = update.get('val', {}).get('jsonVal', '')
+            if not val:
+                log.error('{0} has no values'.format(xpath_str))
+                return []
+            json_val = base64.b64decode(val).decode('utf-8')
+            update_val = json.loads(json_val)
+            if isinstance(update_val, dict):
+                update_val = [update_val]
+            for val_dict in update_val:
+                opfields = self.get_opfields(
+                    val_dict,
+                    xpath_str,
+                    opfields
+                )
+        return opfields
+
+    def decode_notification(self, response, namespace):
         """Decode a response from the google.protobuf into a dict."""
         resp_dict = json_format.MessageToDict(response)
         notifies = resp_dict.get('notification', [])
@@ -187,33 +253,7 @@ class Gnmi(BaseConnection):
             updates = notify.get('update', [])
             ret_val = {'time_stamp': time_stamp}
             for update in updates:
-                opfields = []
-                xpath_str = self.path_elem_to_xpath(
-                    update.get('path', {}),
-                    namespace,
-                    opfields
-                )
-                if not xpath_str:
-                    log.error('Xpath not determined from response')
-                    continue
-                # TODO: the val depends on the encoding type
-                val = update.get('val', {}).get('jsonIetfVal', '')
-                if not val:
-                    val = update.get('val', {}).get('jsonVal', '')
-                if not val:
-                    log.error('{0} has no values'.format(xpath_str))
-                    continue
-                json_val = base64.b64decode(val).decode('utf-8')
-                update_val = json.loads(json_val)
-                if isinstance(update_val, dict):
-                    update_val = [update_val]
-                for val_dict in update_val:
-                    opfields = self.get_opfields(
-                        val_dict,
-                        xpath_str,
-                        opfields
-                    )
-                ret_val['update'] = opfields
+                ret_val['update'] = self.decode_update(update)
             deletes = notify.get('delete', [])
             deleted = []
             for delete in deletes:
@@ -260,7 +300,7 @@ class Gnmi(BaseConnection):
         try:
             # Convert xpath to path element
             responses = []
-            ns, configs = self.gnmi.xpath_to_path_elem(cmd)
+            ns, configs, origin = self.gnmi.xpath_to_path_elem(cmd)
             updates = configs.get('update')
             replaces = configs.get('replace')
             deletes = configs.get('delete')
@@ -294,13 +334,13 @@ class Gnmi(BaseConnection):
             self.connect()
         try:
             # Convert xpath to path element
-            ns, msg = self.gnmi.xpath_to_path_elem(cmd)
+            ns, msg, origin = self.gnmi.xpath_to_path_elem(cmd)
             resp = self.gnmi.get_xpaths(
                 msg.get('get', []),
                 datatype
             )
             # Do fixup on response
-            response = self.decode_response(resp, ns)
+            response = self.decode_notification(resp, ns)
             return response
         except Exception as exe:
             log.error(banner('{0}: {1}'.format(exe.code(), exe.details())))
@@ -336,11 +376,43 @@ class Gnmi(BaseConnection):
             self.connect()
         try:
             # Convert xpath to path element
-            import pdb; pdb.set_trace()
-            request = self.gnmi.xpath_to_path_elem(cmd)
-            resp = self.gnmi.subscribe(request)
-            # Do fixup in response
-            return resp
+            ns, msg, origin = self.gnmi.xpath_to_path_elem(cmd)
+            format = cmd['format']
+            subscribe_xpaths = msg['get']
+            subscribe_response = self.gnmi.subscribe_xpaths(
+                subscribe_xpaths,
+                format.get('request_mode', 'STREAM'),
+                format.get('sub_mode', 'SAMPLE'),
+                format.get('encoding', 'PROTO'),
+                self.gnmi._NS_IN_S * cmd.get('sample_interval', 10),
+                origin
+            )
+            if format.get('request_mode', 'STREAM') == 'ONCE':
+                # Do fixup in response
+                response_verify = cmd.get('verifier')
+                returns = cmd.get('returns')
+                for response in subscribe_response:
+                    if response.HasField('sync_response'):
+                        print('timestamp here')
+                    if response.HasField('update'):
+                        resp = json_format.MessageToDict(response)
+                        update = resp.get('update')
+                        ret_val = {'timestamp': update.get('timestamp')}
+                        opfields = self.decode_update(
+                            update.get('update')
+                        )
+                        return response_verify(opfields, returns)
+                    return False
+            else:
+                cmd['namespace'] = ns
+                cmd['decode'] = self.decode_update
+                subscribe_thread = GnmiNotification(
+                    self,
+                    subscribe_response,
+                    **cmd
+                )
+                subscribe_thread.start()
+                return True
         except Exception as exe:
             log.error(banner('{0}: {1}'.format(exe.code(), exe.details())))
 
