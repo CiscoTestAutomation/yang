@@ -307,7 +307,7 @@ class Gnmi(BaseConnection):
                     self.gnmi.set_json(
                         updates,
                         replaces,
-                        ietf=False
+                        origin=origin
                     ))
             if deletes:
                 responses.append(self.gnmi.delete_xpaths(deletes))
@@ -335,7 +335,8 @@ class Gnmi(BaseConnection):
             ns, msg, origin = self.gnmi.xpath_to_path_elem(cmd)
             resp = self.gnmi.get_xpaths(
                 msg.get('get', []),
-                datatype
+                data_type=datatype,
+                origin=origin
             )
             log.info(str(resp))
             # Do fixup on response
