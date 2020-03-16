@@ -4,7 +4,7 @@ import logging
 from collections import OrderedDict, Iterable
 import base64
 import json
-from threading import Thread
+from threading import Thread, Event
 from time import sleep
 from datetime import datetime
 from xml.etree.ElementPath import xpath_tokenizer_re
@@ -46,7 +46,7 @@ class GnmiNotification(Thread):
         def __init__(self, device, response, **request):
             Thread.__init__(self)
             self.device = device
-            self.terminate = False
+            self._stop_event = Event()
             self.log = logging.getLogger(__name__)
             self.request = request
             self.responses = response
@@ -65,44 +65,58 @@ class GnmiNotification(Thread):
             self.encoding = request['format'].get('encoding', 'PROTO')
             self.sample_interval = request['format'].get('sample_interval', 10)
             self.stream_max = request['format'].get('stream_max', 0)
+            self.time_delta = 0
+            self.result = None
+            self.event_triggered = False
 
         def process_opfields(self, response):
             subscribe_resp = json_format.MessageToDict(response)
             updates = subscribe_resp['update']
             resp = self.decode_response(updates)
             if resp:
-                self.response_verify(resp, self.returns.copy())
+                if self.event_triggered:
+                    self.result = self.response_verify(resp, self.returns.copy())
             else:
                 self.log.error('No values in subscribe response')
+                self.stop()
 
         def run(self):
             """Check for inbound notifications."""
-            self.log.info("Starting notification thread")
             t1 = datetime.now()
-            while not self.terminate:
-                self.log.info('Subscribe active')
-                for response in self.responses:
-                    if response.HasField('sync_response'):
-                        self.log.info('Subscribe syncing response')
-                    if response.HasField('update'):
-                        self.log.info(
-                            'Subscribe response {0}'.format(
-                                str(response)
-                            )
+            self.log.info('\nSubscribe notification active\n{0}'.format(
+                29 * '='
+            ))
+            for response in self.responses:
+                if self.stopped():
+                    self.log.info("Terminating notification thread")
+                    break
+                if response.HasField('sync_response'):
+                    self.log.info('Subscribe syncing response')
+                if response.HasField('update'):
+                    self.log.info(
+                        '\nSubscribe response:\n{0}\n{1}'.format(
+                            19 * '=',
+                            str(response)
                         )
-                        self.process_opfields(response)
-                        self.log.info('Subscribe opfields processed')
-                    if self.stream_max:
-                        t2 = datetime.now()
-                        td = t2 - t1
-                        self.log.info(
-                            'Subscribe time {0} seconds'.format(td.seconds)
-                        )
-                        if td.seconds > self.stream_max:
-                            self.terminate = True
-                            break
+                    )
+                    self.process_opfields(response)
+                    self.log.info('Subscribe opfields processed')
+                if self.stream_max:
+                    t2 = datetime.now()
+                    td = t2 - t1
+                    self.log.info(
+                        'Subscribe time {0} seconds'.format(td.seconds)
+                    )
+                    self.time_delta = td.seconds
+                    if td.seconds > self.stream_max:
+                        self.stop()
+                        break
 
-            self.log.info("Terminating notification thread")
+        def stop(self):
+            self._stop_event.set()
+
+        def stopped(self):
+            return self._stop_event.is_set()
 
 
 class Gnmi(BaseConnection):
@@ -157,6 +171,8 @@ class Gnmi(BaseConnection):
         self.builder = builder
         self.gnmi = self.builder.construct()
         log.info(banner('gNMI CONNECTED'))
+
+    active_notifications = {}
 
     @property
     def connected(self):
@@ -338,7 +354,7 @@ class Gnmi(BaseConnection):
                 data_type=datatype,
                 origin=origin
             )
-            log.info(str(resp))
+            log.info('\nGNMI response:\n{0}\n{1}'.format(15 * '=', str(resp)))
             # Do fixup on response
             response = self.decode_notification(resp, ns)
             # TODO: Do we need to send back deletes?
@@ -355,7 +371,7 @@ class Gnmi(BaseConnection):
         Returns:
           (str): CLI response
         """
-        return self.get(cmd, datatype='ALL')
+        return self.get(cmd, datatype='CONFIG')
 
     def execute(self, cmd):
         return self.get(cmd)
@@ -413,9 +429,34 @@ class Gnmi(BaseConnection):
                     **cmd
                 )
                 subscribe_thread.start()
+                self.active_notifications[self] = subscribe_thread
                 return True
         except Exception as exe:
             log.error(banner('{0}: {1}'.format(exe.code(), exe.details())))
+
+    def notify_wait(self, steps):
+        notifier = self.active_notifications.get(self)
+        if notifier:
+            if steps.__result__.code != 1:
+                notifier.stop()
+                del self.active_notifications[device]
+                return
+            notifier.event_triggered = True
+            log.info('Notification event triggered')
+            while notifier.time_delta < notifier.stream_max:
+                log.info('Waiting for notification')
+                if notifier.result is not None:
+                    if notifier.result:
+                        steps.passed(
+                            'Event triggered and notification response passed'
+                        )
+                    else:
+                        steps.failed(
+                            'Event triggered but notification response failed'
+                        )
+                    notifier.stop()
+                    break
+                sleep(1)
 
     def get_updates(self, response):
         """Notification check."""
