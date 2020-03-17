@@ -125,9 +125,7 @@ class Gnmi(BaseConnection):
     os_class_map = {
         None: None,
         "iosxr": "IOS XR",
-        # TODO: nxos cisco-gnmi support is not ready so use iosxe
         "nxos": "NX-OS",
-        # "nxos": "IOS XE",
         "iosxe": "IOS XE",
     }
 
@@ -170,7 +168,16 @@ class Gnmi(BaseConnection):
         # builder.construct() returns client and connects the channel
         self.builder = builder
         self.gnmi = self.builder.construct()
-        log.info(banner('gNMI CONNECTED'))
+        resp = self.capabilities()
+        if resp:
+            log.info(
+                '\ngNMI version: {0} supported encodings: {1}\n\n'.format(
+                    resp.get('gNMIVersion', 'unknown'),
+                    resp.get('supportedEncodings', 'unknown')
+                ))
+            log.info(banner('gNMI CONNECTED'))
+        else:
+            log.info(banner('gNMI Capabilities not returned'))
 
     active_notifications = {}
 
@@ -382,6 +389,9 @@ class Gnmi(BaseConnection):
             self.connect()
         try:
             response = json_format.MessageToDict(self.gnmi.capabilities())
+            log.debug('\nDevice capabilities\n{0}{1}'.format(
+                19 * '=', str(response))
+            )
             return response
         except Exception as exe:
             log.error(banner('{0}: {1}'.format(exe.code(), exe.details())))
