@@ -437,7 +437,7 @@ class Gnmi(BaseConnection):
     def notify_wait(self, steps):
         notifier = self.active_notifications.get(self)
         if notifier:
-            if steps.__result__.code != 1:
+            if steps.result.code != 1:
                 notifier.stop()
                 del self.active_notifications[device]
                 return
