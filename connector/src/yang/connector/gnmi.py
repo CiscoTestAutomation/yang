@@ -7,15 +7,30 @@ import json
 from threading import Thread, Event
 from time import sleep
 from datetime import datetime
+from six import string_types
 from xml.etree.ElementPath import xpath_tokenizer_re
 
 from google.protobuf import json_format
 
 from cisco_gnmi import ClientBuilder
 
-from pyats.log.utils import banner
-from pyats.connections import BaseConnection
-from pyats.utils.secret_strings import to_plaintext
+try:
+    from pyats.log.utils import banner
+    from pyats.connections import BaseConnection
+except ImportError:
+    # Standalone without pyats install
+    class BaseConnection:
+        class dev:
+            def __init__(self, dev_os):
+                self.os = dev_os
+
+        def __init__(self, device_os, **kwargs):
+            self.connection_info = {'protocol': 'gnmi'}
+            self._device = self.dev(device_os)
+            self.connection_info.update(kwargs)
+
+    def banner(string):
+        return string
 
 # try to record usage statistics
 #  - only internal cisco users will have stats.CesMonitor module
@@ -120,7 +135,92 @@ class GnmiNotification(Thread):
 
 
 class Gnmi(BaseConnection):
-    """Session handling for gNMI connections."""
+    """Session handling for gNMI connections.
+
+    Can be used with pyATS same as yang.connector.Netconf is used or
+    can be used as a standlone module.
+
+    Methods:
+    --------
+    capabilities(): gNMI Capabilities.
+    set(dict): gNMI Set.  Input is namespace, xpath/value pairs.
+    get(dict): gNMI Get mode='STATE'. Input xpath/value pairs (value optional).
+    get_config(dict): gNMI Get mode='CONFIG'. Input xpath/value pairs.
+    subscribe(dict): gNMI Subscribe.  Input xpath/value pairs and format
+    notify_wait(dict, callback): Notify subscibe thread that event occured,
+        "callback" must be a class with passed, and failed methods and a
+        result class containing "code" property.
+
+    Examples:
+    -------------------
+    >>> #####################
+    >>> # Capabilities      #
+    >>> #####################
+    >>> from yang.connector.gnmi import Gnmi
+    >>> kwargs={
+    ... 'host':'172.23.167.122',
+    ... 'port':'50051',
+    ... 'root_certificate':'root.pem',
+    ... 'username':'admin',
+    ... 'password':'C!sco123',
+    ... 'ssl_name_override':'ems.cisco.com'
+    ... }
+    >>> gnmi=Gnmi('iosxe', **kwargs)
+    >>> resp = gnmi.capabilities()
+    >>> #####################
+    >>> # Set example       #
+    >>> #####################
+    >>> content={
+    ... 'namespace': {'ios: 'http://cisco.com/ns/yang/Cisco-IOS-XE-native',
+    ... 'ios-cdp': 'http://cisco.com/ns/yang/Cisco-IOS-XE-cdp'},
+    ... 'nodes': [{'xpath': '/ios:native/ios:cdp/ios-cdp:holdtime',
+    ... 'value': '10'}]
+    ... }
+    >>> resp = gnmi.set(content)
+    >>> #####################
+    >>> # Get mode='CONFIG' #
+    >>> #####################
+    >>> content={
+    ... 'namespace': {'ios: 'http://cisco.com/ns/yang/Cisco-IOS-XE-native',
+    ... 'ios-cdp': 'http://cisco.com/ns/yang/Cisco-IOS-XE-cdp'},
+    ... 'nodes': [{'xpath': '/ios:native/ios:cdp/ios-cdp:holdtime'}]
+    ... }
+    >>> resp = gnmi.get_config({'content': content, 'returns': returns})
+    >>> #####################
+    >>> # Get mode='STATE' #
+    >>> #####################
+    >>> content={
+    ... 'namespace': {'ios: 'http://cisco.com/ns/yang/Cisco-IOS-XE-native',
+    ... 'ios-cdp': 'http://cisco.com/ns/yang/Cisco-IOS-XE-cdp'},
+    ... 'nodes': [{'xpath': '/ios:native/ios:cdp/ios-cdp:holdtime'}]
+    ... }
+    >>> resp = gnmi.get({'content': content, 'returns': returns})
+    >>> #####################
+    >>> # Subscribe example #
+    >>> #####################
+    >>> content={
+    ... 'format': {
+    ...     'encoding': 'JSON',
+    ...     'request_mode': 'STREAM',
+    ...     'sample_interval': 5,
+    ...     'stream_max': 15,
+    ...     'sub_mode': 'SAMPLE'},
+    ... }
+    >>> # Add namespace, node xpath list similar to Get to the content
+    >>> # Add list of expected return values to content
+    >>> # Example of an expected return value:
+    >>> content['returns']=[{
+    ... 'datatype': 'string',
+    ... 'id': 0,
+    ... 'name': 'name',
+    ... 'op': '==',
+    ... 'selected': True,
+    ... 'value': 'v4acl',
+    ... 'xpath': '/acl/acl-sets/acl-set/name'}]
+    >>> # Trigger an event that would kick off subscribe
+    >>> # Call notify_wait() passing in a callback class (see notify_wait)
+
+   """
 
     os_class_map = {
         None: None,
@@ -131,13 +231,15 @@ class Gnmi(BaseConnection):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        device = kwargs.get('device')
+        self.device = kwargs.get('device')
         dev_args = self.connection_info
         if dev_args.get('protocol', '') != 'gnmi':
-            # TODO: what now?
-            return
+            msg = 'Invalid protocol {0}'.format(
+                dev_args.get('protocol', '')
+            )
+            raise TypeError(msg)
         # Initialize ClientBuilder
-        self.client_os = self.os_class_map.get(device.os, None)
+        self.client_os = self.os_class_map.get(self.device.os, None)
         # ClientBuilder target is IP:Port
         target = dev_args.get('host') + ':' + str(dev_args.get('port'))
         builder = ClientBuilder(target).set_os(self.client_os)
@@ -156,7 +258,7 @@ class Gnmi(BaseConnection):
         if not private_key:
             private_key = None
         if private_key and os.path.isfile(private_key):
-            private_key= open(private_key, 'rb').read()
+            private_key = open(private_key, 'rb').read()
         builder.set_secure(root, private_key, chain)
         builder.set_ssl_target_override(
             dev_args.get('ssl_name_override', '')
@@ -190,7 +292,6 @@ class Gnmi(BaseConnection):
         """Convert a Path structure to an Xpath."""
         elems = path_elem.get('elem', [])
         xpath = []
-        keys = []
         for elem in elems:
             name = elem.get('name', '')
             if name:
@@ -234,11 +335,12 @@ class Gnmi(BaseConnection):
             opfields.append((val, xpath_str + '/' + name))
             return opfields
 
-    def decode_update(self, updates=[]):
-        opfields=[]
+    def decode_update(self, updates=[], namespace={}):
+        opfields = []
         for update in updates['update']:
             xpath_str = self.path_elem_to_xpath(
                 update.get('path', {}),
+                namespace=namespace,
                 opfields=opfields
             )
             if not xpath_str:
@@ -273,7 +375,7 @@ class Gnmi(BaseConnection):
             time_stamp = notify.get('timestamp', '')
             # TODO: convert time_stamp from str nanoseconds since epoch time
             # to datetime
-            opfields = self.decode_update(notify)
+            opfields = self.decode_update(notify, namespace=namespace)
             ret_val['update'] = opfields
             deletes = notify.get('delete', [])
             deleted = []
@@ -312,9 +414,15 @@ class Gnmi(BaseConnection):
         """Send any Set data command.
 
         Args:
-          cmd (str): Configuration gNMI command.
+          cmd (dict): Mapping to namespace, xpath/value.
+              {'namespace': '<prefix>': '<namespace>'},
+              {'nodes': [{
+                  'edit-op': '<netconf edit-config operation',
+                  'xpath': '<prefixed Xpath to resource',
+                  'value': <value to set resource to>
+              }]}
         Returns:
-          (str): CLI response
+          (dict): gNMI SetResponse
         """
         if not self.connected:
             self.connect()
@@ -346,10 +454,16 @@ class Gnmi(BaseConnection):
         """Send any Get data commmand.
 
         Args:
-          cmd (str): Configuration CLI command.
+          cmd (dict): Mapping to namespace, xpath.
+              {{'namespace': '<prefix>': '<namespace>'},
+               {'nodes': [{'xpath': '<prefixed Xpath to resource'}]}
           datatype (str): [ ALL | STATE ] (default: STATE)
         Returns:
-          (str): CLI response
+          list: List of dict containing updates, replaces, deletes.
+                Updates and replaces are lists of value/xpath tuples.
+                    [{'updates': [(<value>, <xpath"), ...]}]
+                Deletes are a list of xpaths.
+                    [<xpath>,...]
         """
         if not self.connected:
             self.connect()
@@ -371,12 +485,12 @@ class Gnmi(BaseConnection):
             return []
 
     def get_config(self, cmd):
-        """Send any get-config data commmand.
+        """Helper function for get.
 
         Args:
-          cmd (str): Configuration CLI command.
+          cmd (dict): See get function.
         Returns:
-          (str): CLI response
+          list: See get function.
         """
         return self.get(cmd, datatype='CONFIG')
 
@@ -384,7 +498,11 @@ class Gnmi(BaseConnection):
         return self.get(cmd)
 
     def capabilities(self):
-        """Retrieve capabilities from device."""
+        """Retrieve capabilities from device.
+
+        Returns:
+          dict: All capability information.
+        """
         if not self.connected:
             self.connect()
         try:
@@ -398,7 +516,37 @@ class Gnmi(BaseConnection):
             return {}
 
     def subscribe(self, cmd):
-        """Subscribe to notification stream."""
+        """Subscribe to notification stream.
+
+        Send a subscribe command followed by a "notify_wait()" call.
+
+        The subscribe command sends a request and listens for responses.
+        Another command is then executed that would trigger an event.
+        Notify wait is then called to inform the notification thread that
+        an event was trigger and begin evaluating the returned data against
+        expected results.
+
+        Args:
+          cmd (dict): Contains:
+            'format': {
+              'encoding': [JSON | PROTO],
+              'request_mode': [STREAM | ONCE | POLL],
+              'sample_interval': seconds between sampling,
+              'stream_max': Maximun time to keep stream open in seconds,
+              'sub_mode': [ON_CHANGE | SAMPLE]},
+            }
+            'namespace': same as in get function
+            'nodes': same as in get function
+            'returns': list of expected data returned in notifications.
+                       Example of expected data dict:
+                        {'datatype': 'string',
+                            'name': 'name',
+                            'op': '==',
+                            'selected': True,
+                            'value': 'v4acl',
+                            'xpath': '/acl/acl-sets/acl-set/name'}
+
+        """
         if not self.connected:
             self.connect()
         try:
@@ -449,7 +597,7 @@ class Gnmi(BaseConnection):
         if notifier:
             if steps.result.code != 1:
                 notifier.stop()
-                del self.active_notifications[device]
+                del self.active_notifications[self]
                 return
             notifier.event_triggered = True
             log.info('Notification event triggered')
@@ -494,6 +642,6 @@ class Gnmi(BaseConnection):
         """Establish a session using a Context Manager."""
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self):
         """Gracefully close connection on Context Manager exit."""
         self.disconnect()
