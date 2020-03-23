@@ -82,7 +82,7 @@ develop:
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@./setup.py develop --no-deps -q
+	@./setup.py develop -q
 
 	@echo "Completed building and installing: $@"
 	@echo ""
@@ -93,7 +93,7 @@ undevelop:
 	@echo "Uninstalling $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@./setup.py develop --no-deps -q --uninstall
+	@./setup.py develop -q --uninstall
 
 	@echo "Completed uninstalling: $@"
 	@echo ""
