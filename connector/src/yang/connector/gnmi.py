@@ -151,8 +151,36 @@ class Gnmi(BaseConnection):
         "callback" must be a class with passed, and failed methods and a
         result class containing "code" property.
 
-    Examples:
-    -------------------
+    pyATS Examples:
+    ---------------
+    >>> from pyats.topology import loader
+    >>> from yang.connector.gnmi import Gnmi
+    >>> testbed=loader.load('testbed_native_test.yaml')
+    >>> device=testbed.devices['ddmi-9500-2']
+    >>> device.connect(alias='gnmi', via='yang2')
+    >>> #####################
+    >>> # Set/Get example   #
+    >>> #####################
+    >>> content={
+    ... 'namespace': {'ios: 'http://cisco.com/ns/yang/Cisco-IOS-XE-native',
+    ... 'ios-cdp': 'http://cisco.com/ns/yang/Cisco-IOS-XE-cdp'},
+    ... 'nodes': [{'xpath': '/ios:native/ios:cdp/ios-cdp:holdtime',
+    ... 'value': '10'}]
+    ... }
+    >>> device.gnmi.set(content)
+    []
+    >>> content['nodes'][0].pop('value')
+    >>> device.gnmi.get(content)
+    [{'update': [(10, '/native/cdp/holdtime')]}]
+    >>> #####################
+    >>> # Capabilities      #
+    >>> #####################
+    >>> resp=device.gnmi.capabilities()
+    >>> resp.keys()
+    dict_keys(['supportedModels', 'supportedEncodings', 'gNMIVersion'])
+
+    Standalone Examples (pyATS not installed):
+    ------------------------------------------
     >>> #####################
     >>> # Capabilities      #
     >>> #####################
@@ -284,6 +312,15 @@ class Gnmi(BaseConnection):
     active_notifications = {}
 
     @property
+    def device(self):
+        return self._device
+
+    @device.setter
+    def device(self, device):
+        if device:
+            self._device = device
+
+    @property
     def connected(self):
         """Return True if session is connected."""
         return self.gnmi
@@ -357,12 +394,16 @@ class Gnmi(BaseConnection):
             update_val = json.loads(json_val)
             if isinstance(update_val, dict):
                 update_val = [update_val]
-            for val_dict in update_val:
-                opfields = self.get_opfields(
-                    val_dict,
-                    xpath_str,
-                    opfields
-                )
+            elif isinstance(update_val, list):
+                for val_dict in update_val:
+                    opfields = self.get_opfields(
+                        val_dict,
+                        xpath_str,
+                        opfields
+                    )
+            else:
+                # Just one value returned
+                opfields.append((update_val, xpath_str))
         return opfields
 
     def decode_notification(self, response, namespace):
