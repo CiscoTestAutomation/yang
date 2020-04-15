@@ -13,10 +13,12 @@ from xml.etree.ElementPath import xpath_tokenizer_re
 from google.protobuf import json_format
 
 from cisco_gnmi import ClientBuilder
+from cisco_gnmi.xpath_util import xml_path_to_path_elem
 
 try:
     from pyats.log.utils import banner
     from pyats.connections import BaseConnection
+    from pyats.utils.secret_strings import to_plaintext
 except ImportError:
     # Standalone without pyats install
     class BaseConnection:
@@ -30,6 +32,9 @@ except ImportError:
             self.connection_info.update(kwargs)
 
     def banner(string):
+        return string
+
+    def to_plaintext(string):
         return string
 
 # try to record usage statistics
@@ -55,83 +60,97 @@ finally:
 log = logging.getLogger(__name__)
 
 
+class gNMIException(IOError):
+    pass
+
+
 class GnmiNotification(Thread):
-        """Thread listening for event notifications from the device."""
+    """Thread listening for event notifications from the device."""
 
-        def __init__(self, device, response, **request):
-            Thread.__init__(self)
-            self.device = device
-            self._stop_event = Event()
-            self.log = logging.getLogger(__name__)
-            self.request = request
-            self.responses = response
+    def __init__(self, device, response, **request):
+        Thread.__init__(self)
+        self.device = device
+        self._stop_event = Event()
+        self.log = logging.getLogger(__name__)
+        self.request = request
+        self.responses = response
 
-        @property
-        def request(self):
-            return self._request
+    @property
+    def request(self):
+        return self._request
 
-        @request.setter
-        def request(self, request={}):
-            self.returns = request.get('returns')
-            self.response_verify = request.get('verifier')
-            self.decode_response = request.get('decode')
-            self.namespace = request.get('namespace')
-            self.sub_mode = request['format'].get('sub_mode', 'SAMPLE')
-            self.encoding = request['format'].get('encoding', 'PROTO')
-            self.sample_interval = request['format'].get('sample_interval', 10)
-            self.stream_max = request['format'].get('stream_max', 0)
-            self.time_delta = 0
-            self.result = None
-            self.event_triggered = False
+    @request.setter
+    def request(self, request={}):
+        self.returns = request.get('returns')
+        self.response_verify = request.get('verifier')
+        self.decode_response = request.get('decode')
+        self.namespace = request.get('namespace')
+        self.sub_mode = request['format'].get('sub_mode', 'SAMPLE')
+        self.encoding = request['format'].get('encoding', 'PROTO')
+        self.sample_interval = request['format'].get('sample_interval', 10)
+        self.stream_max = request['format'].get('stream_max', 0)
+        self.time_delta = 0
+        self.result = None
+        self.event_triggered = False
+        self._request = request
 
-        def process_opfields(self, response):
-            subscribe_resp = json_format.MessageToDict(response)
-            updates = subscribe_resp['update']
-            resp = self.decode_response(updates)
-            if resp:
-                if self.event_triggered:
-                    self.result = self.response_verify(resp, self.returns.copy())
-            else:
-                self.log.error('No values in subscribe response')
-                self.stop()
+    def process_opfields(self, response):
+        """Decode response and verify result.
 
-        def run(self):
-            """Check for inbound notifications."""
-            t1 = datetime.now()
-            self.log.info('\nSubscribe notification active\n{0}'.format(
-                29 * '='
-            ))
-            for response in self.responses:
-                if self.stopped():
-                    self.log.info("Terminating notification thread")
+        Decoder callback returns desired format of response.
+        Verify callback returns verification of expected results.
+
+        Args:
+          response (proto.gnmi_pb2.Notification): Contains updates that
+              have changes since last timestamp.
+        """
+        subscribe_resp = json_format.MessageToDict(response)
+        updates = subscribe_resp['update']
+        resp = self.decode_response(updates)
+        if resp:
+            if self.event_triggered:
+                self.result = self.response_verify(resp, self.returns.copy())
+        else:
+            self.log.error('No values in subscribe response')
+            self.stop()
+
+    def run(self):
+        """Check for inbound notifications."""
+        t1 = datetime.now()
+        self.log.info('\nSubscribe notification active\n{0}'.format(
+            29 * '='
+        ))
+        for response in self.responses:
+            if self.stopped():
+                self.log.info("Terminating notification thread")
+                break
+            if response.HasField('sync_response'):
+                self.log.info('Subscribe syncing response')
+            if response.HasField('update'):
+                self.log.info(
+                    '\nSubscribe response:\n{0}\n{1}'.format(
+                        19 * '=',
+                        str(response)
+                    )
+                )
+                self.process_opfields(response)
+                self.log.info('Subscribe opfields processed')
+            if self.stream_max:
+                t2 = datetime.now()
+                td = t2 - t1
+                self.log.info(
+                    'Subscribe time {0} seconds'.format(td.seconds)
+                )
+                self.time_delta = td.seconds
+                if td.seconds > self.stream_max:
+                    self.stop()
                     break
-                if response.HasField('sync_response'):
-                    self.log.info('Subscribe syncing response')
-                if response.HasField('update'):
-                    self.log.info(
-                        '\nSubscribe response:\n{0}\n{1}'.format(
-                            19 * '=',
-                            str(response)
-                        )
-                    )
-                    self.process_opfields(response)
-                    self.log.info('Subscribe opfields processed')
-                if self.stream_max:
-                    t2 = datetime.now()
-                    td = t2 - t1
-                    self.log.info(
-                        'Subscribe time {0} seconds'.format(td.seconds)
-                    )
-                    self.time_delta = td.seconds
-                    if td.seconds > self.stream_max:
-                        self.stop()
-                        break
 
-        def stop(self):
-            self._stop_event.set()
+    def stop(self):
+        self._stop_event.set()
 
-        def stopped(self):
-            return self._stop_event.is_set()
+    def stopped(self):
+        return self._stop_event.is_set()
 
 
 class Gnmi(BaseConnection):
@@ -266,11 +285,14 @@ class Gnmi(BaseConnection):
                 dev_args.get('protocol', '')
             )
             raise TypeError(msg)
+
         # Initialize ClientBuilder
         self.client_os = self.os_class_map.get(self.device.os, None)
+
         # ClientBuilder target is IP:Port
         target = dev_args.get('host') + ':' + str(dev_args.get('port'))
         builder = ClientBuilder(target).set_os(self.client_os)
+
         # Gather certificate settings
         root = dev_args.get('root_certificate')
         if not root:
@@ -287,15 +309,37 @@ class Gnmi(BaseConnection):
             private_key = None
         if private_key and os.path.isfile(private_key):
             private_key = open(private_key, 'rb').read()
-        builder.set_secure(root, private_key, chain)
-        builder.set_ssl_target_override(
-            dev_args.get('ssl_name_override', '')
-        )
-        builder.set_call_authentication(
-            dev_args.get('username'),
-            dev_args.get('password')
-        )
-        # builder.construct() returns client and connects the channel
+        if any((root, chain, private_key)):
+            builder.set_secure(root, private_key, chain)
+            builder.set_ssl_target_override(
+                dev_args.get('ssl_name_override', '')
+            )
+            log.info("Connecting secure channel")
+        else:
+            log.info("Connecting insecure channel")
+
+        # Get/set credentials
+        username = dev_args.get('username', '')
+        password = dev_args.get('password', '')
+        if not username or not password:
+            creds = dev_args.get('credentials', '')
+            if not creds:
+                raise KeyError('No credentials found for testbed')
+            if 'gnmi' not in creds:
+                log.info('Credentials used from {0}'.format(
+                    next(iter(creds))
+                ))
+            gnmi_uname_pwd = creds.get('')
+            if not gnmi_uname_pwd:
+                raise KeyError('No credentials found for gNMI')
+            username = gnmi_uname_pwd.get('username', '')
+            password = gnmi_uname_pwd.get('password', '')
+            if not username or not password:
+                raise KeyError('No credentials found for gNMI testbed')
+            password = to_plaintext(password)
+        builder.set_call_authentication(username, password)
+
+        # builder.construct() connects grpc channel and returns client
         self.builder = builder
         self.gnmi = self.builder.construct()
         resp = self.capabilities()
@@ -308,6 +352,8 @@ class Gnmi(BaseConnection):
             log.info(banner('gNMI CONNECTED'))
         else:
             log.info(banner('gNMI Capabilities not returned'))
+            self.disconnect()
+            raise gNMIException('Connection not successful')
 
     active_notifications = {}
 
@@ -470,7 +516,7 @@ class Gnmi(BaseConnection):
         try:
             # Convert xpath to path element
             responses = []
-            ns, configs, origin = self.gnmi.xpath_to_path_elem(cmd)
+            ns, configs, origin = xml_path_to_path_elem(cmd)
             updates = configs.get('update')
             replaces = configs.get('replace')
             deletes = configs.get('delete')
@@ -510,7 +556,7 @@ class Gnmi(BaseConnection):
             self.connect()
         try:
             # Convert xpath to path element
-            ns, msg, origin = self.gnmi.xpath_to_path_elem(cmd)
+            ns, msg, origin = xml_path_to_path_elem(cmd)
             resp = self.gnmi.get_xpaths(
                 msg.get('get', []),
                 data_type=datatype,
@@ -592,7 +638,7 @@ class Gnmi(BaseConnection):
             self.connect()
         try:
             # Convert xpath to path element
-            ns, msg, origin = self.gnmi.xpath_to_path_elem(cmd)
+            ns, msg, origin = xml_path_to_path_elem(cmd)
             format = cmd['format']
             subscribe_xpaths = msg['get']
             subscribe_response = self.gnmi.subscribe_xpaths(
