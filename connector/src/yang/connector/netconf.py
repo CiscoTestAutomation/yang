@@ -10,9 +10,13 @@ from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
-from pyats.log.utils import banner
-from pyats.connections import BaseConnection
-from pyats.utils.secret_strings import to_plaintext
+try:
+    from pyats.log.utils import banner
+    from pyats.connections import BaseConnection
+    from pyats.utils.secret_strings import to_plaintext
+except ImportError:
+    class BaseConnection:
+        pass
 
 # try to record usage statistics
 #  - only internal cisco users will have stats.CesMonitor module
