@@ -314,7 +314,8 @@ Same thing can be achieved in ElementTree format:
 .. code-block:: text
 
     >>> from lxml import etree
-    >>> ele_config = etree.Element("config")
+    >>> ns_map = "urn:ietf:params:xml:ns:netconf:base:1.0"
+    >>> ele_config = etree.Element("{%s}config" % ns_map)
     >>> ele_interfaces = etree.SubElement(ele_config, "interfaces",
                                           nsmap = {None: 'urn:ietf:params:xml:ns:yang:ietf-interfaces'})
     >>> ele_interface = etree.SubElement(ele_interfaces, "interface")
