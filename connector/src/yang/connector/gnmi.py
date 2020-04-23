@@ -1,4 +1,3 @@
-import traceback
 import os
 import logging
 from collections import OrderedDict, Iterable
@@ -120,31 +119,41 @@ class GnmiNotification(Thread):
         self.log.info('\nSubscribe notification active\n{0}'.format(
             29 * '='
         ))
-        for response in self.responses:
-            if self.stopped():
-                self.log.info("Terminating notification thread")
-                break
-            if response.HasField('sync_response'):
-                self.log.info('Subscribe syncing response')
-            if response.HasField('update'):
-                self.log.info(
-                    '\nSubscribe response:\n{0}\n{1}'.format(
-                        19 * '=',
-                        str(response)
-                    )
-                )
-                self.process_opfields(response)
-                self.log.info('Subscribe opfields processed')
-            if self.stream_max:
-                t2 = datetime.now()
-                td = t2 - t1
-                self.log.info(
-                    'Subscribe time {0} seconds'.format(td.seconds)
-                )
-                self.time_delta = td.seconds
-                if td.seconds > self.stream_max:
-                    self.stop()
+        try:
+            for response in self.responses:
+                if self.stopped():
+                    self.log.info("Terminating notification thread")
                     break
+                if response.HasField('sync_response'):
+                    self.log.info('Subscribe syncing response')
+                if response.HasField('update'):
+                    self.log.info(
+                        '\nSubscribe response:\n{0}\n{1}'.format(
+                            19 * '=',
+                            str(response)
+                        )
+                    )
+                    self.process_opfields(response)
+                    self.log.info('Subscribe opfields processed')
+                if self.stream_max:
+                    t2 = datetime.now()
+                    td = t2 - t1
+                    self.log.info(
+                        'Subscribe time {0} seconds'.format(td.seconds)
+                    )
+                    self.time_delta = td.seconds
+                    if td.seconds > self.stream_max:
+                        self.stop()
+                        break
+        except Exception as exc:
+            msg = ''
+            if hasattr(exc, 'details'):
+                msg += 'details: ' + exc.details()
+            if hasattr(exc, 'debug_error_string'):
+                msg += exc.debug_error_string()
+            if not msg:
+                msg = str(exc)
+            self.result = msg
 
     def stop(self):
         self._stop_event.set()
@@ -160,18 +169,18 @@ class Gnmi(BaseConnection):
     can be used as a standlone module.
 
     Methods:
-    --------
+
     capabilities(): gNMI Capabilities.
     set(dict): gNMI Set.  Input is namespace, xpath/value pairs.
     get(dict): gNMI Get mode='STATE'. Input xpath/value pairs (value optional).
     get_config(dict): gNMI Get mode='CONFIG'. Input xpath/value pairs.
     subscribe(dict): gNMI Subscribe.  Input xpath/value pairs and format
-    notify_wait(dict, callback): Notify subscibe thread that event occured,
-        "callback" must be a class with passed, and failed methods and a
+    notify_wait(dict, callback): Notify subscibe thread that event occured, \
+        "callback" must be a class with passed, and failed methods and a \
         result class containing "code" property.
 
     pyATS Examples:
-    ---------------
+
     >>> from pyats.topology import loader
     >>> from yang.connector.gnmi import Gnmi
     >>> testbed=loader.load('testbed_native_test.yaml')
@@ -199,7 +208,7 @@ class Gnmi(BaseConnection):
     dict_keys(['supportedModels', 'supportedEncodings', 'gNMIVersion'])
 
     Standalone Examples (pyATS not installed):
-    ------------------------------------------
+
     >>> #####################
     >>> # Capabilities      #
     >>> #####################
@@ -439,7 +448,7 @@ class Gnmi(BaseConnection):
             json_val = base64.b64decode(val).decode('utf-8')
             update_val = json.loads(json_val)
             if isinstance(update_val, dict):
-                update_val = [update_val]
+                opfields.append((update_val, xpath_str))
             elif isinstance(update_val, list):
                 for val_dict in update_val:
                     opfields = self.get_opfields(
@@ -454,7 +463,10 @@ class Gnmi(BaseConnection):
 
     def decode_notification(self, response, namespace):
         """Decode a response from the google.protobuf into a dict."""
-        resp_dict = json_format.MessageToDict(response)
+        if isinstance(response, dict):
+            resp_dict = response
+        else:
+            resp_dict = json_format.MessageToDict(response)
         notifies = resp_dict.get('notification', [])
         ret_vals = []
         for notify in notifies:
@@ -501,13 +513,13 @@ class Gnmi(BaseConnection):
         """Send any Set data command.
 
         Args:
-          cmd (dict): Mapping to namespace, xpath/value.
-              {'namespace': '<prefix>': '<namespace>'},
-              {'nodes': [{
-                  'edit-op': '<netconf edit-config operation',
-                  'xpath': '<prefixed Xpath to resource',
-                  'value': <value to set resource to>
-              }]}
+          cmd (dict): Mapping to namespace, xpath/value. \
+              {'namespace': '<prefix>': '<namespace>'}, \
+              {'nodes': [{ \
+                  'edit-op': '<netconf edit-config operation', \
+                  'xpath': '<prefixed Xpath to resource', \
+                  'value': <value to set resource to> \
+              }]} \
         Returns:
           (dict): gNMI SetResponse
         """
@@ -541,16 +553,16 @@ class Gnmi(BaseConnection):
         """Send any Get data commmand.
 
         Args:
-          cmd (dict): Mapping to namespace, xpath.
-              {{'namespace': '<prefix>': '<namespace>'},
-               {'nodes': [{'xpath': '<prefixed Xpath to resource'}]}
-          datatype (str): [ ALL | STATE ] (default: STATE)
+          cmd (dict): Mapping to namespace, xpath. \
+              {{'namespace': '<prefix>': '<namespace>'}, \
+               {'nodes': [{'xpath': '<prefixed Xpath to resource'}]} \
+          datatype (str): [ ALL | STATE ] (default: STATE) \
         Returns:
-          list: List of dict containing updates, replaces, deletes.
-                Updates and replaces are lists of value/xpath tuples.
-                    [{'updates': [(<value>, <xpath"), ...]}]
-                Deletes are a list of xpaths.
-                    [<xpath>,...]
+          list: List of dict containing updates, replaces, deletes. \
+                Updates and replaces are lists of value/xpath tuples. \
+                    [{'updates': [(<value>, <xpath"), ...]}] \
+                Deletes are a list of xpaths. \
+                    [<xpath>,...] \
         """
         if not self.connected:
             self.connect()
@@ -615,12 +627,12 @@ class Gnmi(BaseConnection):
 
         Args:
           cmd (dict): Contains:
-            'format': {
-              'encoding': [JSON | PROTO],
-              'request_mode': [STREAM | ONCE | POLL],
-              'sample_interval': seconds between sampling,
-              'stream_max': Maximun time to keep stream open in seconds,
-              'sub_mode': [ON_CHANGE | SAMPLE]},
+            'format': { \
+              'encoding': [JSON | JSON_IETF], \
+              'request_mode': [STREAM | ONCE | POLL], \
+              'sample_interval': seconds between sampling, \
+              'stream_max': Maximun time to keep stream open in seconds, \
+              'sub_mode': [ON_CHANGE | SAMPLE]}, \
             }
             'namespace': same as in get function
             'nodes': same as in get function
@@ -645,7 +657,7 @@ class Gnmi(BaseConnection):
                 subscribe_xpaths,
                 format.get('request_mode', 'STREAM'),
                 format.get('sub_mode', 'SAMPLE'),
-                format.get('encoding', 'PROTO'),
+                format.get('encoding', 'JSON_IETF'),
                 self.gnmi._NS_IN_S * cmd.get('sample_interval', 10),
                 origin
             )
