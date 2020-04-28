@@ -708,7 +708,6 @@ class Gnmi(BaseConnection):
             self.connect()
         try:
             # Convert xpath to path element
-            import pdb; pdb.set_trace()
             ns, msg, origin = xpath_util.xml_path_to_path_elem(cmd)
             if self.support_prefix:
                 prefix = xpath_util.get_prefix(origin)
