@@ -324,18 +324,7 @@ def xml_path_to_path_elem(request, prefix=False):
 
 if __name__ == "__main__":
     from pprint import pprint as pp
-    import grpc
-    from cisco_gnmi.auth import CiscoAuthPlugin
-    from cisco_gnmi.client import Client
 
-    channel = grpc.secure_channel(
-        "127.0.0.1:9339",
-        grpc.composite_channel_credentials(
-            grpc.ssl_channel_credentials(),
-            grpc.metadata_call_credentials(CiscoAuthPlugin("admin", "its_a_secret")),
-        ),
-    )
-    client = Client(channel)
     request = {
         "namespace": {"oc-acl": "http://openconfig.net/yang/acl"},
         "nodes": [
@@ -395,39 +384,4 @@ if __name__ == "__main__":
                 {'/acl/acl-sets/acl-set[name="testacl"][type="ACL_IPV4"]/acl-entries/acl-entry[sequence-id="10"]/ipv4/config': {'source-address': '10.10.10.10/32'}},
                 {'/acl/acl-sets/acl-set[name="testacl"][type="ACL_IPV4"]/acl-entries/acl-entry[sequence-id="10"]/actions/config': {'forwarding-action': 'DROP'}}]}
     'openconfig'
-    """
-    # Feed converted XML Path Language 1.0 Xpaths to create updates
-    updates = client.create_updates(message["update"], origin)
-    pp(updates)
-    """
-    # Expected output
-    =================
-    [path {
-    origin: "openconfig"
-    elem {
-        name: "acl"
-    }
-    elem {
-        name: "acl-sets"
-    }
-    elem {
-        name: "acl-set"
-        key {
-        key: "name"
-        value: "testacl"
-        }
-        key {
-        key: "type"
-        value: "ACL_IPV4"
-        }
-    }
-    elem {
-        name: "acl-entries"
-    }
-    }
-    val {
-    json_val: "{\"acl-entry\": [{\"actions\": {\"config\": {\"forwarding-action\": \"DROP\"}}, \"ipv4\": {\"config\": {\"destination-address\": \"20.20.20.1/32\", \"protocol\": \"IP_TCP\", \"source-address\": \"10.10.10.10/32\"}}, \"sequence-id\": \"10\"}]}"
-    }
-    ]
-    # update is now ready to be sent through gNMI SetRequest
     """
