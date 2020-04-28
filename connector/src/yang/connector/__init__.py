@@ -20,8 +20,12 @@ __copyright__ = 'Cisco Systems, Inc.'
 
 from .netconf import Netconf
 from .gnmi import Gnmi
+from .gnmi import GnmiNotification
+from . import xpath_util
 
 __all__ = (
     'Netconf',
     'Gnmi',
+    'GnmiNotification',
+    'xpath_util'
 )
