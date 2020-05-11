@@ -338,22 +338,9 @@ class Gnmi(BaseConnection):
                 raise KeyError('No credentials found for gNMI testbed')
             password = to_plaintext(password)
         builder.set_call_authentication(username, password)
-
-        # builder.construct() connects grpc channel and returns client
+        # builder.construct() connects grpc channel and returns client instance
         self.builder = builder
-        self.gnmi = self.builder.construct()
-        resp = self.capabilities()
-        if resp:
-            log.info(
-                '\ngNMI version: {0} supported encodings: {1}\n\n'.format(
-                    resp.get('gNMIVersion', 'unknown'),
-                    resp.get('supportedEncodings', 'unknown')
-                ))
-            log.info(banner('gNMI CONNECTED'))
-        else:
-            log.info(banner('gNMI Capabilities not returned'))
-            self.disconnect()
-            raise gNMIException('Connection not successful')
+        self.gnmi = None
 
     active_notifications = {}
 
@@ -497,6 +484,24 @@ class Gnmi(BaseConnection):
 
         return return_caps
 
+    def connect(self):
+        # builder.construct() connects grpc channel and returns client
+        if self.connected:
+            return
+        self.gnmi = self.builder.construct()
+        resp = self.capabilities()
+        if resp:
+            log.info(
+                '\ngNMI version: {0} supported encodings: {1}\n\n'.format(
+                    resp.get('gNMIVersion', 'unknown'),
+                    resp.get('supportedEncodings', 'unknown')
+                ))
+            log.info(banner('gNMI CONNECTED'))
+        else:
+            log.info(banner('gNMI Capabilities not returned'))
+            self.disconnect()
+            raise gNMIException('Connection not successful')
+
     def set(self, cmd):
         """Send any Set data command.
 
@@ -521,14 +526,16 @@ class Gnmi(BaseConnection):
             replaces = configs.get('replace')
             deletes = configs.get('delete')
             if updates or replaces:
-                responses.append(
-                    self.gnmi.set_json(
-                        updates,
-                        replaces,
-                        origin=origin
-                    ))
+                response = self.gnmi.set_json(
+                    updates,
+                    replaces,
+                    ietf=self.json_ietf,
+                    prefix=prefix
+                )
+                responses.append(response)
             if deletes:
-                responses.append(self.gnmi.delete_xpaths(deletes))
+                response = self.gnmi.delete_xpaths(deletes)
+                responses.append(response)
             # Do fixup on response
             return responses
         except Exception as exe:
@@ -654,12 +661,9 @@ class Gnmi(BaseConnection):
                 response_verify = cmd.get('verifier')
                 returns = cmd.get('returns')
                 for response in subscribe_response:
-                    if response.HasField('sync_response'):
-                        print('timestamp here')
                     if response.HasField('update'):
                         resp = json_format.MessageToDict(response)
                         update = resp.get('update')
-                        ret_val = {'timestamp': update.get('timestamp')}
                         opfields = self.decode_update(
                             update.get('update')
                         )
@@ -680,6 +684,7 @@ class Gnmi(BaseConnection):
             log.error(banner('{0}: {1}'.format(exe.code(), exe.details())))
 
     def notify_wait(self, steps):
+        """Activate notification thread and check results."""
         notifier = self.active_notifications.get(self)
         if notifier:
             if steps.result.code != 1:
@@ -707,18 +712,6 @@ class Gnmi(BaseConnection):
         """Notification check."""
         return self.decode_response(response)
 
-    def connect(self):
-        """Connect to gRPC device."""
-        # - Certificates bind domain name, server name, or host name to
-        #   organization identity (company name/location)
-        # - self.__root_certificates - Global authority root issuer
-        # - self.__private_key - used to decrypt (public key encrypts)
-        # - self.__certificate_chain - List of issuers with root being final
-        #   authority
-        if not self.gnmi:
-            self.gnmi = self.builder.construct()
-            log.info(banner('gNMI CONNECTED'))
-
     def disconnect(self):
         """Disconnect from SSH device."""
         if self.connected:
@@ -727,8 +720,10 @@ class Gnmi(BaseConnection):
 
     def __enter__(self):
         """Establish a session using a Context Manager."""
+        if not self.connected:
+            self.connect()
         return self
 
-    def __exit__(self):
+    def __exit__(self, *args):
         """Gracefully close connection on Context Manager exit."""
         self.disconnect()
