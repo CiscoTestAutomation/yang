@@ -83,7 +83,7 @@ class MySSHSession2():
 
 class MyRawRPC():
 
-    def __init__(self, session=None, device_handler=None, async=None,
+    def __init__(self, session=None, device_handler=None,
                        timeout=None, raise_mode=None):
         self._event = MyEvent()
         self._listener = MyRPCReplyListener()
@@ -197,7 +197,7 @@ class TestYang(unittest.TestCase):
         expected_value = False
         self.assertEqual(generated_value, expected_value)
 
-    @patch('yang.connector.RawRPC', new=MyRawRPC)
+    @patch('yang.connector.netconf.RawRPC', new=MyRawRPC)
     def test_request(self):
         self.nc_device._session = MySSHSession()
         self.nc_device.connect()
@@ -229,7 +229,7 @@ class TestYang(unittest.TestCase):
 
     def test_rawrpc(self):
         h = DefaultDeviceHandler()
-        self.rawrpc = yang.connector.RawRPC(session = transport.SSHSession(h),
+        self.rawrpc = yang.connector.netconf.RawRPC(session = transport.SSHSession(h),
                                             device_handler = h)
         self.rawrpc._event = MyEvent()
         self.rawrpc._session = MySSHSession()
@@ -287,3 +287,7 @@ class TestYang(unittest.TestCase):
         self.assertRaises(Exception,
                           self.nc_device.execute,
                           'close')
+
+
+if __name__ == '__main__':
+    unittest.main()
