@@ -18,14 +18,13 @@ __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc.'
 
 
-from .netconf import Netconf, NetconfPipeSession
+from .netconf import Netconf
 from .gnmi import Gnmi
 from .gnmi import GnmiNotification
 from . import xpath_util
 
 __all__ = (
     'Netconf',
-    'NetconfPipeSession',
     'Gnmi',
     'GnmiNotification',
     'xpath_util',
