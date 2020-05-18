@@ -10,7 +10,6 @@ from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
-
 try:
     from pyats.log.utils import banner
     from pyats.connections import BaseConnection
