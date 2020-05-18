@@ -27,5 +27,5 @@ __all__ = (
     'Netconf',
     'Gnmi',
     'GnmiNotification',
-    'xpath_util',
+    'xpath_util'
 )

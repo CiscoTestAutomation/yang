@@ -2,19 +2,13 @@
 
 import re
 import time
-import logging
-import subprocess
-import select
-from threading import Thread
-
 import atexit
-import lxml.etree as et
+import logging
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
-from ncclient.operations.retrieve import GetReply
 
 
 try:
@@ -45,7 +39,6 @@ finally:
 
 # create a logger for this module
 logger = logging.getLogger(__name__)
-
 
 class Netconf(manager.Manager, BaseConnection):
     '''Netconf
@@ -498,7 +491,6 @@ class Netconf(manager.Manager, BaseConnection):
         else:
             raise AttributeError("'%s' object has no attribute '%s'"
                                  % (self.__class__.__name__, method))
-
 
 class RawRPC(operations.rpc.RPC):
     '''RawRPC
