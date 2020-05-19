@@ -22,7 +22,7 @@ from .device import ModelDevice
 from .config import Config, ConfigDelta
 from .composer import Tag
 from .runningconfig import RunningConfigDiff
-from .proto.gnmi import gnmi_pb2, gnmi_pb2_grpc
+from cisco_gnmi.proto import gnmi_pb2, gnmi_pb2_grpc
 
 # try to record usage statistics
 #  - only internal cisco users will have stats.CesMonitor module
