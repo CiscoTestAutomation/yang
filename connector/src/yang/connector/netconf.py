@@ -2,20 +2,13 @@
 
 import re
 import time
-import logging
-import subprocess
-import select
-from threading import Thread
-
 import atexit
-import lxml.etree as et
+import logging
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
-from ncclient.operations.retrieve import GetReply
-
 
 try:
     from pyats.log.utils import banner
@@ -45,7 +38,6 @@ finally:
 
 # create a logger for this module
 logger = logging.getLogger(__name__)
-
 
 class Netconf(manager.Manager, BaseConnection):
     '''Netconf
@@ -499,7 +491,6 @@ class Netconf(manager.Manager, BaseConnection):
             raise AttributeError("'%s' object has no attribute '%s'"
                                  % (self.__class__.__name__, method))
 
-
 class RawRPC(operations.rpc.RPC):
     '''RawRPC
 
@@ -538,241 +529,3 @@ class RawRPC(operations.rpc.RPC):
                 logger.info('Timeout. No rpc-reply received.')
                 raise TimeoutExpiredError('ncclient timed out while waiting '
                                           'for an rpc-reply.')
-
-
-class NetconfPipeSession(BaseConnection):
-    """Subclass using POSIX pipes to Communicate NETCONF messaging."""
-
-    def __init__(self, *args, **kwargs):
-        # instanciate BaseConnection
-        super().__init__(self, *args, **kwargs)
-        self.log = logger
-
-    class NetconfPipeManager():
-        """Netconf client using process pipes."""
-
-        chunk = re.compile('(\n#+\\d+\n)')
-        rpc_pipe_err = """
-            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-            <rpc-error>
-                <error-type>transport</error-type>
-                <error-tag>resource-denied</error-tag>
-                <error-severity>error</error-severity>
-                <error-message>No pipe data returned</error-message>
-            </rpc-error>
-            </rpc-reply>"""
-
-        def __init__(self, proc, log, data):
-            self.proc = proc
-            self.log = log
-            self.buf = ''
-            elements = et.fromstring(data)
-            self.server_capabilities = [e.text for e in elements.iter()
-                                        if hasattr(e, 'text')]
-
-        def get_rpc(self, elements):
-            """Return string representation of lxml element with rpc."""
-            rpc_element = et.Element(
-                'rpc',
-                attrib={'message-id': '101'},
-                nsmap={None: "urn:ietf:params:xml:ns:netconf:base:1.0"}
-            )
-            rpc_element.append(elements)
-            return et.tostring(rpc_element,
-                               pretty_print=True).decode()
-
-        def recv_data(self):
-            """Retrieve data from process pipe."""
-            if not self.proc:
-                self.log('Not connected.')
-            else:
-                buf = ''
-                while True:
-                    # TODO: Could be better...1 byte at a time...
-                    # but, too much buffer and it deadlocks!!
-                    data = self.proc.stdout.read(1)
-
-                    if not data:
-                        return GetReply(self.rpc_pipe_err)
-
-                    buf += data
-
-                    if buf.endswith('\n##'):
-                        buf = buf[:-3]
-                        break
-
-                self.log(buf)
-                buf = buf[buf.find('<'):]
-                reply = re.sub(self.chunk, '', buf)
-                return GetReply(reply)
-
-        def send_cmd(self, rpc):
-            """Send a message to process pipe."""
-            if not self.proc:
-                self.log('Not connected.')
-            else:
-                if et.iselement(rpc):
-                    if not rpc.tag.endswith('rpc'):
-                        rpc = self.get_rpc(rpc)
-                    else:
-                        rpc = et.tostring(rpc, pretty_print=True).decode()
-                rpc_str = '\n#' + str(len(rpc)) + '\n' + rpc + '\n##\n'
-                self.log(rpc_str)
-                self.proc.stdin.write(rpc_str)
-                self.proc.stdin.flush()
-
-                return self.recv_data()
-
-        def edit_config(self, target=None, config=None, **kwargs):
-            """Send edit-config."""
-            target = target
-            config = config
-            target_element = et.Element('target')
-            et.SubElement(target_element, target)
-            edit_config_element = et.Element('edit-config')
-            edit_config_element.append(target_element)
-            edit_config_element.append(config)
-            return self.send_cmd(self.get_rpc(edit_config_element))
-
-        def get_config(self, source=None, filter=None, **kwargs):
-            """Send get-config."""
-            source = source
-            filter = filter
-            source_element = et.Element('source')
-            et.SubElement(source_element, source)
-            get_config_element = et.Element('get-config')
-            get_config_element.append(source_element)
-            get_config_element.append(filter)
-            return self.send_cmd(self.get_rpc(get_config_element))
-
-        def get(self, filter=None, **kwargs):
-            filter_arg = filter
-            get_element = et.Element('get')
-            if isinstance(filter_arg, tuple):
-                type, filter_content = filter_arg
-                if type == "xpath":
-                    get_element.attrib["select"] = filter_content
-                elif type == "subtree":
-                    filter_element = et.Element('filter')
-                    filter_element.append(filter_content)
-                    get_element.append(filter_element)
-            else:
-                get_element.append(filter_arg)
-            return self.send_cmd(self.get_rpc(get_element))
-
-        def commit(self, **kwargs):
-            commit_element = et.Element('commit')
-            return self.send_cmd(self.get_rpc(commit_element))
-
-        def discard_changes(self, **kwargs):
-            discard_element = et.Element('discard-changes')
-            return self.send_cmd(self.get_rpc(discard_element))
-
-        def lock(self, target=None, **kwargs):
-            target = target
-            store_element = et.Element(target)
-            target_element = et.Element('target')
-            target_element.append(store_element)
-            lock_element = et.Element('lock')
-            lock_element.append(target_element)
-            return self.send_cmd(self.get_rpc(lock_element))
-
-        def unlock(self, target=None, **kwargs):
-            target = target
-            store_element = et.Element(target)
-            target_element = et.Element('target')
-            target_element.append(store_element)
-            unlock_element = et.Element('unlock')
-            unlock_element.append(target_element)
-            return self.send_cmd(self.get_rpc(unlock_element))
-
-        def dispatch(self, rpc_command=None, **kwargs):
-            rpc = rpc_command
-            return self.send_cmd(rpc)
-
-    class NotificationPipeThread(Thread):
-        """Notification listener for process pipe.
-
-        TODO: Not operational and may not be end design
-        """
-
-        def __init__(self, session):
-            Thread.__init__(self)
-            # Don't keep main process alive just because this thread is alive
-            self.daemon = True
-
-            self.session = session
-            self.terminate = False
-
-        def run(self):
-            """Check for inbound notifications when select activates."""
-            logger.info("Starting notification thread for %s", self.session.key)
-
-            while not self.terminate:
-                if not self.session.connected:
-                    time.sleep(1)
-                    continue
-
-                rfd, wfd, efd = select.select(
-                    [self.session.manager.proc.stdout],
-                    [], [], 10
-                )
-
-                self.session.manager.recv_data()
-
-                logger.debug("Notification thread received a notification")
-
-            logger.info("Terminating notification thread")
-
-    @property
-    def connected(self):
-        """Check for active connection."""
-        return (self.manager is not None and self.manager.proc.poll() is None)
-
-    def connect(self, timeout=None):
-        """Connect to ENXR pipe."""
-        if self.connected:
-            return self
-
-        CMD = ['netconf_sshd_proxy', '-i', '0', '-o', '1', '-u', 'lab']
-        BUFSIZE = 8192
-
-        p = subprocess.Popen(CMD, bufsize=BUFSIZE,
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT,
-                             universal_newlines=True)
-
-        buf = ''
-        while True:
-            data = p.stdout.read(1)
-            if not data:
-                self.log('No data received for hello')
-                p.terminate()
-                return
-
-            buf += data
-            if buf.endswith(']]>]]>'):
-                buf = buf[buf.find('<'):-6]
-                self.log('Hello received')
-                break
-
-        p.stdin.write(
-            '<?xml version="1.0" encoding="UTF-8"?><hello '
-            'xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><capabilities>'
-            '<capability>urn:ietf:params:netconf:base:1.1</capability>'
-            '</capabilities></hello>]]>]]>'
-        )
-        p.stdin.flush()
-        self.manager = self.NetconfPipeManager(p, self.log, buf)
-        # TODO: Notification stream interferes with get-schema
-        self.log("NETCONF CONNECTED PIPE")
-        return self
-
-    def disconnect(self):
-        """Disconnect from ENXR pipe."""
-        if self.connected:
-            self.manager.proc.terminate()
-            self.manager = None
-            self.log("NETCONF DISCONNECT PIPE")
-        return self
