@@ -53,39 +53,44 @@ class NetconfSessionLogHandler(logging.Handler):
 
     def emit(self, record):
         if hasattr(record, 'session'):
-            # If the message contains XML, pretty-print it
-            record.args = list(record.args)
+            try:
+                # If the message contains XML, pretty-print it
+                record.args = list(record.args)
 
-            for i in range(len(record.args)):
-                arg = None
-                if isinstance(record.args[i], str):
-                    arg = record.args[i].encode("utf-8")
-                elif isinstance(record.args[i], bytes):
-                    arg = record.args[i]
-                if not arg:
-                    continue
-                start = arg.find(b"<")
-                end = arg.rfind(b"]]>]]>")    # NETCONF 1.0 message terminator
-                if end == -1:
-                    end = arg.rfind(b">")
-                    if end != -1:
-                        # Include the '>' character in our range
-                        end += 1
-                if start != -1 and end != -1:
+                for i in range(len(record.args)):
                     try:
-                        elem = et.fromstring(arg[start:end], self.parser)
-                        if elem is None:
+                        arg = None
+                        if isinstance(record.args[i], str):
+                            arg = record.args[i].encode("utf-8")
+                        elif isinstance(record.args[i], bytes):
+                            arg = record.args[i]
+                        if not arg:
                             continue
+                        start = arg.find(b"<")
+                        end = arg.rfind(b"]]>]]>")   # NETCONF 1.0 terminator
+                        if end == -1:
+                            end = arg.rfind(b">")
+                            if end != -1:
+                                # Include the '>' character in our range
+                                end += 1
+                        if start != -1 and end != -1:
+                            elem = et.fromstring(arg[start:end], self.parser)
+                            if elem is None:
+                                continue
 
-                        text = et.tostring(elem, pretty_print=True,
-                                           encoding="utf-8")
-                        record.args[i] = (arg[:start] +
-                                          text +
-                                          arg[end:]).decode()
-                    except:
-                        # Bad XML so let the record go through unchanged
+                            text = et.tostring(elem, pretty_print=True,
+                                               encoding="utf-8")
+                            record.args[i] = (arg[:start] +
+                                              text +
+                                              arg[end:]).decode()
+                    except Exception:
+                        # Pretty print issue so leave record unchanged
                         continue
-            record.args = tuple(record.args)
+
+                record.args = tuple(record.args)
+            except Exception:
+                # Unable to handle record so leave it unchanged
+                pass
 
 
 nccl.addHandler(NetconfSessionLogHandler())
