@@ -72,24 +72,19 @@ class NetconfSessionLogHandler(logging.Handler):
                         # Include the '>' character in our range
                         end += 1
                 if start != -1 and end != -1:
-                    elem = et.fromstring(arg[start:end], self.parser)
-                    if elem is None:
-                        continue
-                    # Hello messages are quite long and are,
-                    # from an end user's perspective, often just noise.
-                    # Therefore, abridge them unless the user has opted in
-                    # to high verbosity.
-                    if (et.QName(elem.tag).localname == "hello" and
-                            nccl.level != logging.DEBUG):
-                        for child in list(elem):
-                            elem.remove(child)
-                        elem.text = "..."
+                    try:
+                        elem = et.fromstring(arg[start:end], self.parser)
+                        if elem is None:
+                            continue
 
-                    text = et.tostring(elem, pretty_print=True,
-                                       encoding="utf-8")
-                    record.args[i] = (arg[:start] +
-                                      text +
-                                      arg[end:]).decode()
+                        text = et.tostring(elem, pretty_print=True,
+                                           encoding="utf-8")
+                        record.args[i] = (arg[:start] +
+                                          text +
+                                          arg[end:]).decode()
+                    except:
+                        # Bad XML so let the record go through unchanged
+                        continue
             record.args = tuple(record.args)
 
 
