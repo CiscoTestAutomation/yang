@@ -542,7 +542,8 @@ class Netconf(manager.Manager, BaseConnection):
 
     def __getattr__(self, method):
         # avoid the __getattr__ from Manager class
-        if method in manager.VENDOR_OPERATIONS or method in manager.OPERATIONS:
+        if (hasattr(manager, 'VENDOR_OPERATIONS') and method in manager.VENDOR_OPERATIONS) \
+            or method in manager.OPERATIONS:
             return super().__getattr__(method)
         else:
             raise AttributeError("'%s' object has no attribute '%s'"
