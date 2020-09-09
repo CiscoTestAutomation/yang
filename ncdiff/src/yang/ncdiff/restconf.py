@@ -124,7 +124,7 @@ class RestconfParser(object):
         if m:
             return m.group(1).split('/')
         else:
-            raise ValueError("invalid url '{}'".format(url))
+            raise ValueError("invalid url '{}'".format(self.reply.url))
 
     @property
     def _json_data(self):
@@ -260,7 +260,7 @@ class RestconfParser(object):
             elif schema_node.get('type') == 'list' and len(values) > 0:
                 key_tags = BaseCalculator._get_list_keys(schema_node)
                 for key_tag, value in zip(key_tags, values):
-                    key = self.subelement(config_node, key_tag, value)
+                    self.subelement(config_node, key_tag, value)
         return config_node_parent, config_node
 
 
@@ -270,7 +270,7 @@ class RestconfComposer(Composer):
     A composer to convert an lxml Element object to Restconf JSON format.
     '''
 
-    def get_json(self, instance=True):
+    def get_json(self, instance=True, child_tag=None):
         '''get_json
 
         High-level api: get_json returns json_val of the config node.
@@ -307,15 +307,21 @@ class RestconfComposer(Composer):
                 item.tag = tag
             return pk.data(node, preserve_root=True)
 
-        def convert_node(node):
+        def convert_node(node, child_tag=None):
             # lxml.etree does not allow tag name like oc-if:enable
             # so it is converted to xml.etree.ElementTree
             string = etree.tostring(node, encoding='unicode',
                                     pretty_print=False)
-            return ElementTree.fromstring(string)
+            xml_node = ElementTree.fromstring(string)
+            if child_tag is not None:
+                for child in list(xml_node):
+                    if child.tag != child_tag:
+                        xml_node.remove(child)
+            return xml_node
 
         if instance:
-            return json.dumps(get_json_instance(convert_node(self.node)))
+            return json.dumps(get_json_instance(convert_node(self.node, 
+                                                             child_tag=child_tag)))
         else:
             nodes = [n for n in self.node.getparent() \
                                          .iterchildren(tag=self.node.tag)]
@@ -457,10 +463,10 @@ class RestconfCalculator(BaseCalculator):
         # if a list node, by default update the list instance
         # if a list node and update_whole=True, update the list totally
         def generate_patch(node, instance=True):
-            composer = RestconfComposer(self.device, node)
+            composer = RestconfComposer(self.device, node.getparent())
             url = 'https://{}:{}'.format(self.ip, self.port)
             url += composer.get_url(instance=instance)
-            data_json = composer.get_json(instance=instance)
+            data_json = composer.get_json(instance=instance, child_tag=node.tag)
             patches.append(requests.Request('PATCH', url, headers=header_json,
                                             data=data_json))
 
