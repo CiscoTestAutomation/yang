@@ -350,7 +350,7 @@ class Netconf(manager.Manager, BaseConnection):
         defaults.update(self.connection_info)
 
         # remove items
-        disregards = ['class', 'model', 'protocol', 
+        disregards = ['class', 'model', 'protocol',
                       'async_mode', 'raise_mode', 'credentials']
         defaults = {k: v for k, v in defaults.items() if k not in disregards}
 
@@ -372,6 +372,20 @@ class Netconf(manager.Manager, BaseConnection):
                 defaults['password'] = to_plaintext(self.connection_info['credentials']['netconf']['password'])
             except Exception:
                 pass
+
+        # support sshtunnel
+        if 'sshtunnel' in defaults:
+            from unicon.sshutils import sshtunnel
+            try:
+                tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
+                if tunnel_port:
+                    defaults['host'] = self.device.connections[self.via] \
+                                           .sshtunnel.tunnel_ip
+                    defaults['port'] = tunnel_port
+            except AttributeError as err:
+                raise AttributeError("Cannot add ssh tunnel. Connection %s may "
+                                     "not have ip/host or port.\n%s" % (self.via, err))
+            del defaults['sshtunnel']
 
         defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
 
