@@ -4,6 +4,7 @@ Changelog
 .. toctree::
    :maxdepth: 2
 
+   2020/september
    2020/august
    2020/july
    2020/june
