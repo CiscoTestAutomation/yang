@@ -1,9 +1,9 @@
 """netconf.py module is a wrapper around the ncclient package."""
 
 import re
-import time
 import atexit
 import logging
+import datetime
 import lxml.etree as et
 from ncclient import manager
 from ncclient import operations
@@ -35,7 +35,7 @@ except Exception:
 finally:
     if CesMonitor is not None:
         # CesMonitor exists -> this is an internal cisco user
-        CesMonitor(action = __name__, application='pyATS Packages').post()
+        CesMonitor(action=__name__, application='pyATS Packages').post()
 
 # create a logger for this module
 logger = logging.getLogger(__name__)
@@ -206,9 +206,9 @@ class Netconf(manager.Manager, BaseConnection):
 
         # instanciate ncclient Manager
         # (can't use super due to mro change)
-        manager.Manager.__init__(self, session = session,
-                                       device_handler = device_handler,
-                                       timeout = self.timeout)
+        manager.Manager.__init__(self, session=session,
+                                       device_handler=device_handler,
+                                       timeout=self.timeout)
 
     @property
     def session(self):
@@ -463,9 +463,13 @@ class Netconf(manager.Manager, BaseConnection):
         else:
             cls = operation
 
-        return super().execute(cls, *args, **kwargs)
+        time1 = datetime.datetime.now()
+        reply = super().execute(cls, *args, **kwargs)
+        time2 = datetime.datetime.now()
+        reply.elapsed = time2 - time1
+        return reply
 
-    def request(self, msg, timeout=30):
+    def request(self, msg, timeout=30, return_obj=False):
         '''request
 
         High-level api: sends message through NetConf session and returns with
@@ -487,13 +491,18 @@ class Netconf(manager.Manager, BaseConnection):
         timeout : `int`, optional
             An optional keyed argument to set timeout value in seconds. Its
             default value is 30 seconds.
+        return_obj : `boolean`, optional
+            Normally a string is returned as a reply. In other cases, we may
+            want to return a RPCReply object, so we can access some attributes,
+            e.g., reply.ok or reply.elapsed.
 
         Returns
         -------
 
-        str
+        str or RPCReply
             The reply from the device in string. If something goes wrong, an
-            exception will be raised.
+            exception will be raised. If return_obj=True, the reply is a
+            RPCReply object.
 
 
         Raises
@@ -515,7 +524,7 @@ class Netconf(manager.Manager, BaseConnection):
             ...      xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
             ...     <get>
             ...     <filter>
-            ...     <native xmlns="http://cisco.com/ns/yang/ned/ios">
+            ...     <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
             ...     <version>
             ...     </version>
             ...     </native>
@@ -537,10 +546,10 @@ class Netconf(manager.Manager, BaseConnection):
             >>>
         '''
 
-        rpc = RawRPC(session = self.session,
-                     device_handler = self._device_handler,
-                     timeout = timeout,
-                     raise_mode = operations.rpc.RaiseMode.NONE)
+        rpc = RawRPC(session=self.session,
+                     device_handler=self._device_handler,
+                     timeout=timeout,
+                     raise_mode=operations.rpc.RaiseMode.NONE)
 
         # identify message-id
         m = re.search(r'message-id="([A-Za-z0-9_\-:# ]*)"', msg)
@@ -553,7 +562,10 @@ class Netconf(manager.Manager, BaseConnection):
                            'expect an exception when receiving rpc-reply '
                            'due to missing message-id.')
 
-        return rpc._request(msg).xml
+        if return_obj:
+            return rpc._request(msg)
+        else:
+            return rpc._request(msg).xml
 
     def __getattr__(self, method):
         # avoid the __getattr__ from Manager class
@@ -563,6 +575,7 @@ class Netconf(manager.Manager, BaseConnection):
         else:
             raise AttributeError("'%s' object has no attribute '%s'"
                                  % (self.__class__.__name__, method))
+
 
 class RawRPC(operations.rpc.RPC):
     '''RawRPC
@@ -585,17 +598,17 @@ class RawRPC(operations.rpc.RPC):
         logger.debug('Requesting %r' % self.__class__.__name__)
         logger.info('Sending rpc...')
         logger.info(msg)
-        time1 = time.time()
+        time1 = datetime.datetime.now()
         self._session.send(msg)
         if not self._async:
             logger.debug('Sync request, will wait for timeout=%r' %
                          self._timeout)
             self._event.wait(self._timeout)
             if self._event.isSet():
-                time2 = time.time()
-                reply_time = "{:.3f}".format(time2 - time1)
-                logger.info('Receiving rpc-reply after {} sec...'.
-                            format(reply_time))
+                time2 = datetime.datetime.now()
+                self._reply.elapsed = time2 - time1
+                logger.info('Receiving rpc-reply after {:.3f} sec...'.
+                            format(self._reply.elapsed.total_seconds()))
                 logger.info(self._reply)
                 return self._reply
             else:
