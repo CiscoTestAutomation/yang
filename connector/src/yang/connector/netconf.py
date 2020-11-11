@@ -201,7 +201,8 @@ class Netconf(manager.Manager, BaseConnection):
         session = transport.SSHSession(device_handler)
 
         # load known_hosts file (if available)
-        session.load_known_hosts()
+        if kwargs.get('hostkey_verify'):
+            session.load_known_hosts()
 
         # instanciate ncclient Manager
         # (can't use super due to mro change)
