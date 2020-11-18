@@ -293,6 +293,7 @@ class Gnmi(BaseConnection):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device = kwargs.get('device')
+        self.channel = None
         dev_args = self.connection_info
         if dev_args.get('protocol', '') != 'gnmi':
             msg = 'Invalid protocol {0}'.format(
@@ -336,6 +337,7 @@ class Gnmi(BaseConnection):
             )
             log.info("Connecting secure channel")
         else:
+            builder._set_insecure()
             log.info("Connecting insecure channel")
 
         # Get/set credentials
@@ -412,13 +414,7 @@ class Gnmi(BaseConnection):
             return opfields
         elif isinstance(val, list):
             for item in val:
-                for name, dict_val in item.items():
-                    opfields = self.get_opfields(
-                        dict_val,
-                        xpath_str + '/' + name,
-                        opfields,
-                        namespace
-                    )
+                self.get_opfields(item, xpath_str, opfields, namespace)
             return opfields
         else:
             xpath_list = xpath_str.split('/')
@@ -429,45 +425,56 @@ class Gnmi(BaseConnection):
             opfields.append((val, xpath_str + '/' + name))
             return opfields
 
-    def decode_update(self, updates=[], namespace={}):
+    def decode_opfields(self, update={}, namespace={}):
         opfields = []
-        for update in updates['update']:
-            xpath_str = self.path_elem_to_xpath(
-                update.get('path', {}),
-                namespace=namespace,
-                opfields=opfields
+        xpath_str = self.path_elem_to_xpath(
+            update.get('path', {}),
+            namespace=namespace,
+            opfields=opfields
+        )
+        if not xpath_str:
+            log.error('Xpath not determined from response')
+            return []
+        # TODO: the val depends on the encoding type
+        val = update.get('val', {}).get('jsonIetfVal', '')
+        if not val:
+            val = update.get('val', {}).get('jsonVal', '')
+        if not val:
+            log.error('{0} has no values'.format(xpath_str))
+            return []
+        json_val = base64.b64decode(val).decode('utf-8')
+        update_val = json.loads(json_val)
+        if isinstance(update_val, dict):
+            opfields = self.get_opfields(
+                update_val,
+                xpath_str,
+                opfields,
+                namespace
             )
-            if not xpath_str:
-                log.error('Xpath not determined from response')
-                return []
-            # TODO: the val depends on the encoding type
-            val = update.get('val', {}).get('jsonIetfVal', '')
-            if not val:
-                val = update.get('val', {}).get('jsonVal', '')
-            if not val:
-                log.error('{0} has no values'.format(xpath_str))
-                return []
-            json_val = base64.b64decode(val).decode('utf-8')
-            update_val = json.loads(json_val)
-            if isinstance(update_val, dict):
+        elif isinstance(update_val, list):
+            for val_dict in update_val:
                 opfields = self.get_opfields(
-                    update_val,
+                    val_dict,
                     xpath_str,
                     opfields,
                     namespace
                 )
-            elif isinstance(update_val, list):
-                for val_dict in update_val:
-                    opfields = self.get_opfields(
-                        val_dict,
-                        xpath_str,
-                        opfields,
-                        namespace
-                    )
-            else:
-                # Just one value returned
-                opfields.append((update_val, xpath_str))
+        else:
+            # Just one value returned
+            opfields.append((update_val, xpath_str))
         return opfields
+
+    def decode_update(self, update={}, namespace={}):
+        # TODO: the val depends on the encoding type
+        val = update.get('val', {}).get('jsonIetfVal', '')
+        if not val:
+            val = update.get('val', {}).get('jsonVal', '')
+        if not val:
+            log.error('{0} has no values'.format(xpath_str))
+            return []
+        json_val = base64.b64decode(val).decode('utf-8')
+        update_val = json.loads(json_val)
+        return update_val
 
     def decode_notification(self, response, namespace):
         """Decode a response from the google.protobuf into a dict."""
@@ -482,8 +489,17 @@ class Gnmi(BaseConnection):
             time_stamp = notify.get('timestamp', '')
             # TODO: convert time_stamp from str nanoseconds since epoch time
             # to datetime
-            opfields = self.decode_update(notify, namespace=namespace)
-            ret_val['update'] = opfields
+            for update in notify['update']:
+                val_dict = self.decode_update(update, namespace=namespace)
+                opfields = self.decode_opfields(update, namespace=namespace)
+                if 'update' not in ret_val:
+                    ret_val['update'] = [val_dict]
+                else:
+                    ret_val['update'].append(val_dict)
+                if 'opfields' not in ret_val:
+                    ret_val['opfields'] = [opfields]
+                else:
+                    ret_val['opfields'].append(opfields)
             deletes = notify.get('delete', [])
             deleted = []
             for delete in deletes:
@@ -521,7 +537,7 @@ class Gnmi(BaseConnection):
         # builder.construct() connects grpc channel and returns client
         if self.connected:
             return
-        self.gnmi = self.builder.construct()
+        self.gnmi, self.channel = self.builder.construct(return_channel=True)
         resp = self.capabilities()
         if resp:
             log.info(
@@ -793,7 +809,10 @@ class Gnmi(BaseConnection):
     def disconnect(self):
         """Disconnect from SSH device."""
         if self.connected:
-            del self.gnmi
+            if self.channel:
+                self.channel.close()
+            self.gnmi = None
+            del self.channel
 
     def __enter__(self):
         """Establish a session using a Context Manager."""
