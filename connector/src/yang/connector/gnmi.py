@@ -465,7 +465,7 @@ class Gnmi(BaseConnection):
         return opfields
 
     def decode_update(self, update={}, namespace={}):
-        # TODO: the val depends on the encoding type
+        """Convert JSON return to python dict for display or processing."""
         val = update.get('val', {}).get('jsonIetfVal', '')
         if not val:
             val = update.get('val', {}).get('jsonVal', '')
@@ -492,14 +492,14 @@ class Gnmi(BaseConnection):
             for update in notify['update']:
                 val_dict = self.decode_update(update, namespace=namespace)
                 opfields = self.decode_opfields(update, namespace=namespace)
+                if 'decode' not in ret_val:
+                    ret_val['decode'] = [val_dict]
+                else:
+                    ret_val['decode'].append(val_dict)
                 if 'update' not in ret_val:
-                    ret_val['update'] = [val_dict]
+                    ret_val['update'] = [opfields]
                 else:
-                    ret_val['update'].append(val_dict)
-                if 'opfields' not in ret_val:
-                    ret_val['opfields'] = [opfields]
-                else:
-                    ret_val['opfields'].append(opfields)
+                    ret_val['update'].append(opfields)
             deletes = notify.get('delete', [])
             deleted = []
             for delete in deletes:
