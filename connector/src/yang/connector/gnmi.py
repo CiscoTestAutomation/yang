@@ -448,6 +448,9 @@ class Gnmi(BaseConnection):
             # Just one value returned
             opfields.append((update_val, xpath_str))
             return opfields
+        else:
+            # Reset opfields to avoid duplicates
+            opfields = []
         if isinstance(update_val, dict):
             opfields = self.get_opfields(
                 update_val,
