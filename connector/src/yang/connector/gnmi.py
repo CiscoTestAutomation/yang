@@ -444,6 +444,10 @@ class Gnmi(BaseConnection):
             return []
         json_val = base64.b64decode(val).decode('utf-8')
         update_val = json.loads(json_val)
+        if not isinstance(update_val, (dict, list)):
+            # Just one value returned
+            opfields.append((update_val, xpath_str))
+            return opfields
         if isinstance(update_val, dict):
             opfields = self.get_opfields(
                 update_val,
@@ -459,9 +463,6 @@ class Gnmi(BaseConnection):
                     opfields,
                     namespace
                 )
-        else:
-            # Just one value returned
-            opfields.append((update_val, xpath_str))
         return opfields
 
     def decode_update(self, update={}, namespace={}):
