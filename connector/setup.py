@@ -182,7 +182,7 @@ setup(
         'paramiko >= 1.15.1',
         'lxml >= 3.3.0',
         'ncclient >= 0.6.6',
-        'cisco-gnmi',
+        'cisco-gnmi >= 1.0.13, < 2.0.0',
     ],
 
     # any additional groups of dependencies.
