@@ -568,163 +568,153 @@ class Netconf(manager.Manager, BaseConnection):
 class NetconfEnxr():
     """Subclass using POSIX pipes to Communicate NETCONF messaging."""
 
+    chunk = re.compile('(\n#+\\d+\n)')
+    rpc_pipe_err = """
+        <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <rpc-error>
+            <error-type>transport</error-type>
+            <error-tag>resource-denied</error-tag>
+            <error-severity>error</error-severity>
+            <error-message>No pipe data returned</error-message>
+        </rpc-error>
+        </rpc-reply>"""
+
     def __init__(self, *args, **kwargs):
         self.manager = None
+        self.proc = None
+        self.buf = None
+        self.server_capabilities = None
 
-    class NetconfPipeManager():
-        """Netconf client using process pipes."""
+    def get_rpc(self, elements):
+        """Return string representation of lxml element with rpc."""
+        rpc_element = et.Element(
+            'rpc',
+            attrib={'message-id': '101'},
+            nsmap={None: "urn:ietf:params:xml:ns:netconf:base:1.0"}
+        )
+        rpc_element.append(elements)
+        return et.tostring(rpc_element,
+                           pretty_print=True).decode()
 
-        chunk = re.compile('(\n#+\\d+\n)')
-        rpc_pipe_err = """
-            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-            <rpc-error>
-                <error-type>transport</error-type>
-                <error-tag>resource-denied</error-tag>
-                <error-severity>error</error-severity>
-                <error-message>No pipe data returned</error-message>
-            </rpc-error>
-            </rpc-reply>"""
+    def recv_data(self):
+        """Retrieve data from process pipe."""
+        if not self.proc:
+            logger.info(banner('Not connected.'))
+        else:
+            buf = ''
+            while True:
+                # TODO: Could be better...1 byte at a time...
+                # but, too much buffer and it deadlocks!!
+                data = self.proc.stdout.read(1)
 
-        def __init__(self, proc, log, data):
-            self.proc = proc
-            self.buf = ''
-            elements = et.fromstring(data)
-            self.server_capabilities = [e.text for e in elements.iter()
-                                        if hasattr(e, 'text')]
+                if not data:
+                    return GetReply(self.rpc_pipe_err)
 
-        def get_rpc(self, elements):
-            """Return string representation of lxml element with rpc."""
-            rpc_element = et.Element(
-                'rpc',
-                attrib={'message-id': '101'},
-                nsmap={None: "urn:ietf:params:xml:ns:netconf:base:1.0"}
-            )
-            rpc_element.append(elements)
-            return et.tostring(rpc_element,
-                               pretty_print=True).decode()
+                buf += data
 
-        def recv_data(self):
-            """Retrieve data from process pipe."""
-            if not self.proc:
-                logger.info(banner('Not connected.'))
-            else:
-                buf = ''
-                while True:
-                    # TODO: Could be better...1 byte at a time...
-                    # but, too much buffer and it deadlocks!!
-                    data = self.proc.stdout.read(1)
+                if buf.endswith('\n##'):
+                    buf = buf[:-3]
+                    break
 
-                    if not data:
-                        return GetReply(self.rpc_pipe_err)
+            logger.info(banner(buf))
+            buf = buf[buf.find('<'):]
+            reply = re.sub(self.chunk, '', buf)
+            return GetReply(reply)
 
-                    buf += data
+    def send_cmd(self, rpc):
+        """Send a message to process pipe."""
+        if not self.proc:
+            logger.info(banner('Not connected.'))
+        else:
+            if et.iselement(rpc):
+                if not rpc.tag.endswith('rpc'):
+                    rpc = self.get_rpc(rpc)
+                else:
+                    rpc = et.tostring(rpc, pretty_print=True).decode()
+            rpc_str = '\n#' + str(len(rpc)) + '\n' + rpc + '\n##\n'
+            logger.info(banner(rpc_str))
+            self.proc.stdin.write(rpc_str)
+            self.proc.stdin.flush()
 
-                    if buf.endswith('\n##'):
-                        buf = buf[:-3]
-                        break
+            return self.recv_data()
 
-                logger.info(banner(buf))
-                buf = buf[buf.find('<'):]
-                reply = re.sub(self.chunk, '', buf)
-                return GetReply(reply)
+    def edit_config(self, target=None, config=None, **kwargs):
+        """Send edit-config."""
+        target = target
+        config = config
+        target_element = et.Element('target')
+        et.SubElement(target_element, target)
+        edit_config_element = et.Element('edit-config')
+        edit_config_element.append(target_element)
+        edit_config_element.append(config)
+        return self.send_cmd(self.get_rpc(edit_config_element))
 
-        def send_cmd(self, rpc):
-            """Send a message to process pipe."""
-            if not self.proc:
-                logger.info(banner('Not connected.'))
-            else:
-                if et.iselement(rpc):
-                    if not rpc.tag.endswith('rpc'):
-                        rpc = self.get_rpc(rpc)
-                    else:
-                        rpc = et.tostring(rpc, pretty_print=True).decode()
-                rpc_str = '\n#' + str(len(rpc)) + '\n' + rpc + '\n##\n'
-                logger.info(banner(rpc_str))
-                self.proc.stdin.write(rpc_str)
-                self.proc.stdin.flush()
+    def get_config(self, source=None, filter=None, **kwargs):
+        """Send get-config."""
+        source = source
+        filter = filter
+        source_element = et.Element('source')
+        et.SubElement(source_element, source)
+        get_config_element = et.Element('get-config')
+        get_config_element.append(source_element)
+        get_config_element.append(filter)
+        return self.send_cmd(self.get_rpc(get_config_element))
 
-                return self.recv_data()
+    def get(self, filter=None, **kwargs):
+        filter_arg = filter
+        get_element = et.Element('get')
+        if isinstance(filter_arg, tuple):
+            type, filter_content = filter_arg
+            if type == "xpath":
+                get_element.attrib["select"] = filter_content
+            elif type == "subtree":
+                filter_element = et.Element('filter')
+                filter_element.append(filter_content)
+                get_element.append(filter_element)
+        else:
+            get_element.append(filter_arg)
+        return self.send_cmd(self.get_rpc(get_element))
 
-        def edit_config(self, target=None, config=None, **kwargs):
-            """Send edit-config."""
-            target = target
-            config = config
-            target_element = et.Element('target')
-            et.SubElement(target_element, target)
-            edit_config_element = et.Element('edit-config')
-            edit_config_element.append(target_element)
-            edit_config_element.append(config)
-            return self.send_cmd(self.get_rpc(edit_config_element))
+    def commit(self, **kwargs):
+        commit_element = et.Element('commit')
+        return self.send_cmd(self.get_rpc(commit_element))
 
-        def get_config(self, source=None, filter=None, **kwargs):
-            """Send get-config."""
-            source = source
-            filter = filter
-            source_element = et.Element('source')
-            et.SubElement(source_element, source)
-            get_config_element = et.Element('get-config')
-            get_config_element.append(source_element)
-            get_config_element.append(filter)
-            return self.send_cmd(self.get_rpc(get_config_element))
+    def discard_changes(self, **kwargs):
+        discard_element = et.Element('discard-changes')
+        return self.send_cmd(self.get_rpc(discard_element))
 
-        def get(self, filter=None, **kwargs):
-            filter_arg = filter
-            get_element = et.Element('get')
-            if isinstance(filter_arg, tuple):
-                type, filter_content = filter_arg
-                if type == "xpath":
-                    get_element.attrib["select"] = filter_content
-                elif type == "subtree":
-                    filter_element = et.Element('filter')
-                    filter_element.append(filter_content)
-                    get_element.append(filter_element)
-            else:
-                get_element.append(filter_arg)
-            return self.send_cmd(self.get_rpc(get_element))
+    def lock(self, target=None, **kwargs):
+        target = target
+        store_element = et.Element(target)
+        target_element = et.Element('target')
+        target_element.append(store_element)
+        lock_element = et.Element('lock')
+        lock_element.append(target_element)
+        return self.send_cmd(self.get_rpc(lock_element))
 
-        def commit(self, **kwargs):
-            commit_element = et.Element('commit')
-            return self.send_cmd(self.get_rpc(commit_element))
+    def unlock(self, target=None, **kwargs):
+        target = target
+        store_element = et.Element(target)
+        target_element = et.Element('target')
+        target_element.append(store_element)
+        unlock_element = et.Element('unlock')
+        unlock_element.append(target_element)
+        return self.send_cmd(self.get_rpc(unlock_element))
 
-        def discard_changes(self, **kwargs):
-            discard_element = et.Element('discard-changes')
-            return self.send_cmd(self.get_rpc(discard_element))
-
-        def lock(self, target=None, **kwargs):
-            target = target
-            store_element = et.Element(target)
-            target_element = et.Element('target')
-            target_element.append(store_element)
-            lock_element = et.Element('lock')
-            lock_element.append(target_element)
-            return self.send_cmd(self.get_rpc(lock_element))
-
-        def unlock(self, target=None, **kwargs):
-            target = target
-            store_element = et.Element(target)
-            target_element = et.Element('target')
-            target_element.append(store_element)
-            unlock_element = et.Element('unlock')
-            unlock_element.append(target_element)
-            return self.send_cmd(self.get_rpc(unlock_element))
-
-        def dispatch(self, rpc_command=None, **kwargs):
-            rpc = rpc_command
-            return self.send_cmd(rpc)
+    def dispatch(self, rpc_command=None, **kwargs):
+        rpc = rpc_command
+        return self.send_cmd(rpc)
 
     @property
     def connected(self):
         """Check for active connection."""
-        return (self.manager is not None and self.manager.proc.poll() is None)
+        # return (self.manager is not None and self.manager.proc.poll() is None)
+        return self.server_capabilities is not None
 
     def connect(self, timeout=None):
         """Connect to ENXR pipe."""
         if self.connected:
             return self
-
-        # if (self.dev_profile.netconf.device_variant != "iosenxr"):
-        #     logger.info(banner("Unrecognized TCP platform {0}.".format(
-        #         self.dev_profile.netconf.device_variant)))
 
         CMD = ['netconf_sshd_proxy', '-i', '0', '-o', '1', '-u', 'lab']
         BUFSIZE = 8192
@@ -756,7 +746,11 @@ class NetconfEnxr():
             '</capabilities></hello>]]>]]>'
         )
         p.stdin.flush()
-        self.manager = self.NetconfPipeManager(p, logger, buf)
+        self.proc = p
+        self.buf = ''
+        elements = et.fromstring(buf)
+        self.server_capabilities = [e.text for e in elements.iter()
+                                    if hasattr(e, 'text')]
         # TODO: Notification stream interferes with get-schema
         logger.info(banner("NETCONF CONNECTED PIPE"))
         return self
