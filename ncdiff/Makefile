@@ -55,6 +55,8 @@ docs:
 
 	@echo "Completed building docs for preview."
 	@echo ""
+	@echo "Done."
+	@echo ""
 
 test:
 	@$(TESTCMD)
@@ -75,6 +77,8 @@ package:
 
 	@echo "Completed building: $@"
 	@echo ""
+	@echo "Done."
+	@echo ""
 
 develop:
 	@echo ""
@@ -86,6 +90,8 @@ develop:
 
 	@echo "Completed building and installing: $@"
 	@echo ""
+	@echo "Done."
+	@echo ""
 
 undevelop:
 	@echo ""
@@ -96,6 +102,8 @@ undevelop:
 	@./setup.py develop --no-deps -q --uninstall
 
 	@echo "Completed uninstalling: $@"
+	@echo ""
+	@echo "Done."
 	@echo ""
 
 clean:
