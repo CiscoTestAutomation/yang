@@ -37,7 +37,7 @@ except Exception:
 finally:
     if CesMonitor is not None:
         # CesMonitor exists -> this is an internal cisco user
-        CesMonitor(action = __name__, application='pyATS Packages').post()
+        CesMonitor(action=__name__, application='pyATS Packages').post()
 
 # create a logger for this module
 logger = logging.getLogger(__name__)
@@ -207,9 +207,9 @@ class Netconf(manager.Manager, BaseConnection):
 
         # instanciate ncclient Manager
         # (can't use super due to mro change)
-        manager.Manager.__init__(self, session = session,
-                                       device_handler = device_handler,
-                                       timeout = self.timeout)
+        manager.Manager.__init__(
+            self, session=session, device_handler=device_handler,
+            timeout=self.timeout)
 
     @property
     def session(self):
@@ -367,11 +367,13 @@ class Netconf(manager.Manager, BaseConnection):
         # check credentials
         if self.connection_info.get('credentials'):
             try:
-                defaults['username'] = str(self.connection_info['credentials']['netconf']['username'])
+                defaults['username'] = str(
+                    self.connection_info['credentials']['netconf']['username'])
             except Exception:
                 pass
             try:
-                defaults['password'] = to_plaintext(self.connection_info['credentials']['netconf']['password'])
+                defaults['password'] = to_plaintext(
+                    self.connection_info['credentials']['netconf']['password'])
             except Exception:
                 pass
 
@@ -385,8 +387,9 @@ class Netconf(manager.Manager, BaseConnection):
                                            .sshtunnel.tunnel_ip
                     defaults['port'] = tunnel_port
             except AttributeError as err:
-                raise AttributeError("Cannot add ssh tunnel. Connection %s may "
-                                     "not have ip/host or port.\n%s" % (self.via, err))
+                raise AttributeError("Cannot add ssh tunnel. \
+                Connection %s may not have ip/host or port.\n%s"
+                                     % (self.via, err))
             del defaults['sshtunnel']
 
         defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
@@ -538,17 +541,18 @@ class Netconf(manager.Manager, BaseConnection):
             >>>
         '''
 
-        rpc = RawRPC(session = self.session,
-                     device_handler = self._device_handler,
-                     timeout = timeout,
-                     raise_mode = operations.rpc.RaiseMode.NONE)
+        rpc = RawRPC(session=self.session,
+                     device_handler=self._device_handler,
+                     timeout=timeout,
+                     raise_mode=operations.rpc.RaiseMode.NONE)
 
         # identify message-id
         m = re.search(r'message-id="([A-Za-z0-9_\-:# ]*)"', msg)
         if m:
             rpc._id = m.group(1)
             rpc._listener.register(rpc._id, rpc)
-            logger.debug('Found message-id="%s" in your rpc, which is good.', rpc._id)
+            logger.debug(
+                'Found message-id="%s" in your rpc, which is good.', rpc._id)
         else:
             logger.warning('Cannot find message-id in your rpc. You may '
                            'expect an exception when receiving rpc-reply '
@@ -558,12 +562,13 @@ class Netconf(manager.Manager, BaseConnection):
 
     def __getattr__(self, method):
         # avoid the __getattr__ from Manager class
-        if (hasattr(manager, 'VENDOR_OPERATIONS') and method in manager.VENDOR_OPERATIONS) \
-            or method in manager.OPERATIONS:
+        if hasattr(manager, 'VENDOR_OPERATIONS') and method \
+                in manager.VENDOR_OPERATIONS or method in manager.OPERATIONS:
             return super().__getattr__(method)
         else:
             raise AttributeError("'%s' object has no attribute '%s'"
                                  % (self.__class__.__name__, method))
+
 
 class NetconfEnxr():
     """Subclass using POSIX pipes to Communicate NETCONF messaging."""
@@ -708,8 +713,9 @@ class NetconfEnxr():
     @property
     def connected(self):
         """Check for active connection."""
-        # return (self.manager is not None and self.manager.proc.poll() is None)
-        return self.server_capabilities is not None
+
+        return self.server_capabilities is not None and self.proc.poll() \
+            is None
 
     def connect(self, timeout=None):
         """Connect to ENXR pipe."""
@@ -758,10 +764,10 @@ class NetconfEnxr():
     def disconnect(self):
         """Disconnect from ENXR pipe."""
         if self.connected:
-            self.manager.proc.terminate()
-            self.manager = None
+            self.proc.terminate()
             logger.info(banner("NETCONF DISCONNECT PIPE"))
         return self
+
 
 class RawRPC(operations.rpc.RPC):
     '''RawRPC
