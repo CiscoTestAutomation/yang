@@ -228,12 +228,14 @@ class TestYang(unittest.TestCase):
         self.assertEqual(generated_value, expected_value)
 
     def test_rawrpc(self):
+        from ncclient.operations.retrieve import GetReply
+
         h = DefaultDeviceHandler()
         self.rawrpc = yang.connector.netconf.RawRPC(session = transport.SSHSession(h),
                                             device_handler = h)
         self.rawrpc._event = MyEvent()
         self.rawrpc._session = MySSHSession()
-        self.rawrpc._reply = '''
+        reply_raw = '''
             <rpc-reply message-id="101"
              xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" >
             <data>
@@ -243,6 +245,7 @@ class TestYang(unittest.TestCase):
             </data>
             </rpc-reply>
             '''
+        self.rawrpc._reply = GetReply(reply_raw)
         r = '''
              <rpc message-id="101"
               xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -256,7 +259,7 @@ class TestYang(unittest.TestCase):
              </get>
              </rpc>
             '''
-        generated_value = self.rawrpc._request(r)
+        generated_value = self.rawrpc._request(r).xml
         expected_value = '''
             <rpc-reply message-id="101"
              xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" >
