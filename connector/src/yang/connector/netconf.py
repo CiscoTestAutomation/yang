@@ -796,7 +796,6 @@ class NetconfEnxr():
         if self.connected:
             self.proc.terminate()
             logger.info("NETCONF DISCONNECT PIPE")
-        return self
 
 
 class RawRPC(operations.rpc.RPC):
