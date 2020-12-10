@@ -14,7 +14,6 @@ from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
 try:
-    from pyats.log.utils import banner
     from pyats.connections import BaseConnection
     from pyats.utils.secret_strings import to_plaintext
 except ImportError:
@@ -41,7 +40,6 @@ finally:
 
 # create a logger for this module
 logger = logging.getLogger(__name__)
-
 
 nccl = logging.getLogger("ncclient")
 # The 'Sending' messages are logged at level INFO.
@@ -396,7 +394,7 @@ class Netconf(manager.Manager, BaseConnection):
 
         try:
             self.session.connect(**defaults)
-            logger.info(banner('NETCONF CONNECTED'))
+            logger.info('NETCONF CONNECTED')
         except Exception:
             if self.session.transport:
                 self.session.close()
@@ -604,7 +602,7 @@ class NetconfEnxr():
     def recv_data(self):
         """Retrieve data from process pipe."""
         if not self.proc:
-            logger.info(banner('Not connected.'))
+            logger.info('Not connected.')
         else:
             buf = ''
             while True:
@@ -621,15 +619,15 @@ class NetconfEnxr():
                     buf = buf[:-3]
                     break
 
-            logger.info(banner(buf))
+            logger.info(buf)
             buf = buf[buf.find('<'):]
             reply = re.sub(self.chunk, '', buf)
             return GetReply(reply)
 
-    def send_cmd(self, rpc):
+    def request(self, rpc):
         """Send a message to process pipe."""
         if not self.proc:
-            logger.info(banner('Not connected.'))
+            logger.info('Not connected.')
         else:
             if et.iselement(rpc):
                 if not rpc.tag.endswith('rpc'):
@@ -637,11 +635,40 @@ class NetconfEnxr():
                 else:
                     rpc = et.tostring(rpc, pretty_print=True).decode()
             rpc_str = '\n#' + str(len(rpc)) + '\n' + rpc + '\n##\n'
-            logger.info(banner(rpc_str))
+            logger.info(rpc_str)
             self.proc.stdin.write(rpc_str)
             self.proc.stdin.flush()
 
             return self.recv_data()
+
+    def configure(self, msg):
+        '''configure
+
+        High-level api: configure is a common method of console, vty and ssh
+        sessions, however it is not supported by this NetconfEnxr class. This is
+        just a placeholder in case someone mistakenly calls config method in a
+        netconf session. An Exception is thrown out with explanation.
+
+        Parameters
+        ----------
+
+        msg : `str`
+            Any config CLI need to be sent out.
+
+        Raises
+        ------
+
+        Exception
+            configure is not a supported method of this Netconf class.
+        '''
+
+        raise Exception('configure is not a supported method of this NetconfEnxr '
+                        'class, since a more suitable method, edit_config, is '
+                        'recommended. There are nine netconf operations '
+                        'defined by RFC 6241, and edit-config is one of them. '
+                        'Also users can build any netconf requst, including '
+                        'invalid netconf requst as negative test cases, in '
+                        'XML format and send it by method request.')
 
     def edit_config(self, target=None, config=None, **kwargs):
         """Send edit-config."""
@@ -720,7 +747,7 @@ class NetconfEnxr():
     def connect(self, timeout=None):
         """Connect to ENXR pipe."""
         if self.connected:
-            return self
+            msg = 'Already connected'
 
         CMD = ['netconf_sshd_proxy', '-i', '0', '-o', '1', '-u', 'lab']
         BUFSIZE = 8192
@@ -732,40 +759,43 @@ class NetconfEnxr():
                              universal_newlines=True)
 
         buf = ''
-        while True:
-            data = p.stdout.read(1)
-            if not data:
-                logger.info(banner('No data received for hello'))
-                p.terminate()
-                return
+        try:
+            while True:
+                data = p.stdout.read(1)
+                if not data:
+                    logger.info('No data received for hello')
+                    p.terminate()
+                    return
 
-            buf += data
-            if buf.endswith(']]>]]>'):
-                buf = buf[buf.find('<'):-6]
-                logger.info(banner('Hello received'))
-                break
+                buf += data
+                if buf.endswith(']]>]]>'):
+                    buf = buf[buf.find('<'):-6]
+                    logger.info('Hello received')
+                    break
 
-        p.stdin.write(
-            '<?xml version="1.0" encoding="UTF-8"?><hello '
-            'xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><capabilities>'
-            '<capability>urn:ietf:params:netconf:base:1.1</capability>'
-            '</capabilities></hello>]]>]]>'
-        )
-        p.stdin.flush()
-        self.proc = p
-        self.buf = ''
-        elements = et.fromstring(buf)
-        self.server_capabilities = [e.text for e in elements.iter()
-                                    if hasattr(e, 'text')]
-        # TODO: Notification stream interferes with get-schema
-        logger.info(banner("NETCONF CONNECTED PIPE"))
-        return self
+            p.stdin.write(
+                '<?xml version="1.0" encoding="UTF-8"?><hello '
+                'xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><capabilities>'
+                '<capability>urn:ietf:params:netconf:base:1.1</capability>'
+                '</capabilities></hello>]]>]]>'
+            )
+            p.stdin.flush()
+            self.proc = p
+            self.buf = ''
+            elements = et.fromstring(buf)
+            self.server_capabilities = [e.text for e in elements.iter()
+                                        if hasattr(e, 'text')]
+            # TODO: Notification stream interferes with get-schema
+            msg = "NETCONF CONNECTED PIPE"
+        except:
+            msg = 'Not connected, Something went wrong'
+        return msg
 
     def disconnect(self):
         """Disconnect from ENXR pipe."""
         if self.connected:
             self.proc.terminate()
-            logger.info(banner("NETCONF DISCONNECT PIPE"))
+            logger.info("NETCONF DISCONNECT PIPE")
         return self
 
 
