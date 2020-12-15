@@ -2,9 +2,12 @@
 
 import re
 import time
+from datetime import datetime as dt
 import atexit
 import logging
+from time import sleep
 import lxml.etree as et
+from threading import Thread, Event
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
@@ -209,6 +212,18 @@ class Netconf(manager.Manager, BaseConnection):
                                        device_handler = device_handler,
                                        timeout = self.timeout)
 
+    active_notifications = {}
+
+    def subscribe(self, request, steps):
+        subscribe_thread = NetconfNotification(self, request=request)
+
+        if not self.connected:
+            self.connect()
+
+        subscribe_thread.start()
+
+        self.active_notifications[self] = subscribe_thread
+
     @property
     def session(self):
         '''session
@@ -410,6 +425,29 @@ class Netconf(manager.Manager, BaseConnection):
 
         self.session.close()
 
+    def notify_wait(self, steps):
+        """Activate notification thread and check results."""
+        notifier = self.active_notifications.get(self)
+        if notifier:
+            if steps.result.code != 1:
+                notifier.stop()
+                del self.active_notifications[self]
+                return
+            notifier.event_triggered = True
+            while notifier.time_delta < notifier.stream_max:
+                if notifier.result is not None:
+                    if notifier.result:
+                        steps.passed(
+                            'Event triggered and notification response passed'
+                        )
+                    else:
+                        steps.failed(
+                            'Event triggered but notification response failed'
+                        )
+                    notifier.stop()
+                    break
+                sleep(1)
+
     def configure(self, msg):
         '''configure
 
@@ -601,3 +639,64 @@ class RawRPC(operations.rpc.RPC):
                 logger.info('Timeout. No rpc-reply received.')
                 raise TimeoutExpiredError('ncclient timed out while waiting '
                                           'for an rpc-reply.')
+
+
+class NetconfNotification(Thread):
+    """Thread listening for event notifications from the device."""
+
+    def __init__(self, device, **request):
+        Thread.__init__(self)
+        self.device = device
+        self._stop_event = Event()
+        self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.DEBUG)
+        self.request = request
+
+    @property
+    def request(self):
+        return self._request
+
+    @request.setter
+    def request(self, request={}):
+        request_data = request['request']
+        self.returns = request_data.get('returns')
+        self.response_verify = request_data.get('verifier')
+        self.decode_rxesponse = request_data.get('decode')
+        self.namespace = request_data.get('namespace')
+        self.sub_mode = request_data['format'].get('sub_mode', 'SAMPLE')
+        self.encoding = request_data['format'].get('encoding', 'PROTO')
+        self.sample_interval = request_data['format'].get('sample_interval', 10)
+        self.stream_max = request_data['format'].get('stream_max', 0)
+        self.time_delta = 0
+        self.result = None
+        self.event_triggered = False
+        self._request = request_data
+
+    def run(self):
+        t1 = dt.now()
+        logger.info(banner('Starting subscribe stream'))
+        while not self.stopped():
+            t2 = dt.now()
+            td = t2 - t1
+            notif = self.device.take_notification(timeout=1)
+
+            logger.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(td.seconds))
+
+            if notif and self.event_triggered:
+                resp_elements = self.request['decode'](notif.notification_xml)
+                if resp_elements and self.returns:
+                    self.result = self._request['verifier'](resp_elements, self.returns)
+            if self.stream_max:
+                self.time_delta = td.seconds
+                if td.seconds > self.stream_max:
+                    logger.info(banner(
+                        'Subscribe stream expired after {} seconds'.format(td.seconds)
+                    ))
+                    self.stop()
+                    break
+
+    def stop(self):
+        self._stop_event.set()
+
+    def stopped(self):
+        return self._stop_event.is_set()
