@@ -450,11 +450,20 @@ class Gnmi(BaseConnection):
 
     def decode_update(self, update={}, namespace={}):
         """Convert JSON return to python dict for display or processing."""
+        opfields = []
+        xpath_str = self.path_elem_to_xpath(
+            update.get('path', {}),
+            namespace=namespace,
+            opfields=opfields
+        )
+        if not xpath_str:
+            log.error('Xpath not determined from response')
+            return []
         val = update.get('val', {}).get('jsonIetfVal', '')
         if not val:
             val = update.get('val', {}).get('jsonVal', '')
         if not val:
-            log.error('JSON has no values')
+            log.error('{0} has no values'.format(xpath_str))
             return []
         json_val = base64.b64decode(val).decode('utf-8')
         return json.loads(json_val)
