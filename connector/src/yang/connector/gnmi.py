@@ -38,25 +38,6 @@ except ImportError:
     def to_plaintext(string):
         return string
 
-# try to record usage statistics
-#  - only internal cisco users will have stats.CesMonitor module
-#  - below code does nothing for DevNet users -  we DO NOT track usage stats
-#    for PyPI/public/customer users
-try:
-    # new internal cisco-only pkg since devnet release
-    from ats.cisco.stats import CesMonitor
-except Exception:
-    try:
-        # legacy pyats version, stats was inside utils module
-        from ats.utils.stats import CesMonitor
-    except Exception:
-        CesMonitor = None
-finally:
-    if CesMonitor is not None:
-        # CesMonitor exists -> this is an internal cisco user
-        CesMonitor(action = __name__, application='pyATS Packages').post()
-
-
 # create a logger for this module
 log = logging.getLogger(__name__)
 # Set debug level for cisco_gnmi.client
@@ -411,11 +392,9 @@ class Gnmi(BaseConnection):
                     opfields,
                     namespace
                 )
-            return opfields
         elif isinstance(val, list):
             for item in val:
                 self.get_opfields(item, xpath_str, opfields, namespace)
-            return opfields
         else:
             xpath_list = xpath_str.split('/')
             name = xpath_list.pop()
@@ -423,7 +402,8 @@ class Gnmi(BaseConnection):
                 name = name.replace(mod + ':', '')
             xpath_str = '/'.join(xpath_list)
             opfields.append((val, xpath_str + '/' + name))
-            return opfields
+
+        return opfields
 
     def decode_opfields(self, update={}, namespace={}):
         opfields = []
@@ -474,11 +454,10 @@ class Gnmi(BaseConnection):
         if not val:
             val = update.get('val', {}).get('jsonVal', '')
         if not val:
-            log.error('{0} has no values'.format(xpath_str))
+            log.error('Update has no value')
             return []
         json_val = base64.b64decode(val).decode('utf-8')
-        update_val = json.loads(json_val)
-        return update_val
+        return json.loads(json_val)
 
     def decode_notification(self, response, namespace):
         """Decode a response from the google.protobuf into a dict."""
@@ -575,10 +554,7 @@ class Gnmi(BaseConnection):
             # Convert xpath to path element
             responses = []
             ns, configs, origin = xpath_util.xml_path_to_path_elem(cmd)
-            if self.support_prefix:
-                prefix = xpath_util.get_prefix(origin)
-            else:
-                prefix = None
+            prefix = xpath_util.get_prefix(origin) if self.support_prefix else None
             updates = configs.get('update')
             if len(updates) > 1:
                 xpaths = []
@@ -612,10 +588,7 @@ class Gnmi(BaseConnection):
             return responses
         except Exception as exc:
             msg = ''
-            if hasattr(exc, 'details'):
-                msg = exc.details()
-            else:
-                msg = str(exc)
+            msg = exc.details() if hasattr(exc, 'details') else str(exc)
             log.error(banner('ERROR: {0}'.format(msg)))
 
     def configure(self, cmd):
@@ -691,10 +664,7 @@ class Gnmi(BaseConnection):
             return response
         except Exception as exc:
             msg = ''
-            if hasattr(exc, 'details'):
-                msg = exc.details()
-            else:
-                msg = str(exc)
+            msg = exc.details() if hasattr(exc, 'details') else str(exc)
             log.error(banner('ERROR: {0}'.format(msg)))
             return {}
 
@@ -735,10 +705,7 @@ class Gnmi(BaseConnection):
         try:
             # Convert xpath to path element
             ns, msg, origin = xpath_util.xml_path_to_path_elem(cmd)
-            if self.support_prefix:
-                prefix = xpath_util.get_prefix(origin)
-            else:
-                prefix = None
+            prefix = xpath_util.get_prefix(origin) if self.support_prefix else None
             format = cmd['format']
             subscribe_xpaths = msg['get']
             subscribe_response = self.gnmi.subscribe_xpaths(
@@ -775,10 +742,7 @@ class Gnmi(BaseConnection):
                 return True
         except Exception as exc:
             msg = ''
-            if hasattr(exc, 'details'):
-                msg = exc.details()
-            else:
-                msg = str(exc)
+            msg = exc.details() if hasattr(exc, 'details') else str(exc)
             log.error(banner('ERROR: {0}'.format(msg)))
 
     def notify_wait(self, steps):
