@@ -5,6 +5,7 @@ import atexit
 import logging
 import subprocess
 import datetime
+import uuid
 import lxml.etree as et
 from time import sleep
 from threading import Thread, Event
@@ -18,6 +19,7 @@ from ncclient.operations.errors import TimeoutExpiredError
 try:
     from pyats.connections import BaseConnection
     from pyats.utils.secret_strings import to_plaintext
+    from pyats.log.utils import banner
 except ImportError:
     class BaseConnection:
         pass
@@ -212,17 +214,19 @@ class Netconf(manager.Manager, BaseConnection):
             self, session=session, device_handler=device_handler,
             timeout=self.timeout)
 
-    active_notifications = {}
+        self.active_notifications = {}
+        self.notification_thread_id = ''
 
-    def subscribe(self, request, steps):
-        subscribe_thread = NetconfNotification(self, request=request)
+    def subscribe(self, request):
+        notification_thread = NotificationThread(self, request=request)
 
         if not self.connected:
             self.connect()
 
-        subscribe_thread.start()
+        notification_thread.start()
 
-        self.active_notifications[self] = subscribe_thread
+        self.notification_thread_id = notification_thread.id
+        self.active_notifications[self.notification_thread_id] = notification_thread
 
     @property
     def session(self):
@@ -430,7 +434,7 @@ class Netconf(manager.Manager, BaseConnection):
 
     def notify_wait(self, steps):
         """Activate notification thread and check results."""
-        notifier = self.active_notifications.get(self)
+        notifier = self.active_notifications.get(self.notification_thread_id)
         if notifier:
             if steps.result.code != 1:
                 notifier.stop()
@@ -888,7 +892,7 @@ class RawRPC(operations.rpc.RPC):
                                           'for an rpc-reply.')
 
 
-class NetconfNotification(Thread):
+class NotificationThread(Thread):
     """Thread listening for event notifications from the device."""
 
     def __init__(self, device, **request):
@@ -898,10 +902,15 @@ class NetconfNotification(Thread):
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
         self.request = request
+        self._id = str(uuid.uuid4())
 
     @property
     def request(self):
         return self._request
+
+    @property
+    def id(self):
+        return self._id
 
     @request.setter
     def request(self, request={}):
@@ -920,10 +929,10 @@ class NetconfNotification(Thread):
         self._request = request_data
 
     def run(self):
-        t1 = dt.now()
+        t1 = datetime.datetime.now()
         logger.info(banner('Starting subscribe stream'))
         while not self.stopped():
-            t2 = dt.now()
+            t2 = datetime.datetime.now()
             td = t2 - t1
             notif = self.device.take_notification(timeout=1)
 
