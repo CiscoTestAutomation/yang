@@ -551,7 +551,7 @@ class ModelDownloader(object):
             return
         if reply.ok:
             fname = self.dir_yang + '/' + module + '.yang'
-            with open(fname, 'w') as f:
+            with open(fname, 'w', encoding='utf-8') as f:
                 f.write(reply.data)
             self.downloaded.add(module)
             imports = set()
