@@ -8,6 +8,7 @@ import datetime
 import uuid
 import lxml.etree as et
 from time import sleep
+from threading import Thread, Event
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
