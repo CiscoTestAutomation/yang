@@ -5,10 +5,10 @@ import atexit
 import logging
 import subprocess
 import datetime
-import uuid
+import asyncio
 import lxml.etree as et
 from time import sleep
-from threading import Thread, Event
+from threading import Event
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
@@ -215,18 +215,15 @@ class Netconf(manager.Manager, BaseConnection):
             timeout=self.timeout)
 
         self.active_notifications = {}
-        self.notification_thread_id = ''
 
     def subscribe(self, request):
-        notification_thread = NotificationThread(self, request=request)
+        """ Creates a notification listener and mark it as active """
+        notification = Notification(self, request=request)
 
         if not self.connected:
             self.connect()
 
-        notification_thread.start()
-
-        self.notification_thread_id = notification_thread.id
-        self.active_notifications[self.notification_thread_id] = notification_thread
+        self.active_notifications[self] = notification
 
     @property
     def session(self):
@@ -433,17 +430,19 @@ class Netconf(manager.Manager, BaseConnection):
         self.session.close()
 
     def notify_wait(self, steps):
-        """Activate notification thread and check results."""
-        notifier = self.active_notifications.get(self.notification_thread_id)
-        if notifier:
+        """ Activate notification listener and check results """
+        notification = self.active_notification.get(self)
+        if notification:
             if steps.result.code != 1:
-                notifier.stop()
-                del self.active_notifications[self]
+                notification.stop()
+                del self.active_notification[self]
                 return
-            notifier.event_triggered = True
-            while notifier.time_delta < notifier.stream_max:
-                if notifier.result is not None:
-                    if notifier.result:
+            notification.event_triggered = True
+            # Activate notification listener and process the notifications if any exists
+            notification.start()
+            while notification.time_delta < notification.stream_max:
+                if notification.result is not None:
+                    if notification.result:
                         steps.passed(
                             'Event triggered and notification response passed'
                         )
@@ -451,7 +450,7 @@ class Netconf(manager.Manager, BaseConnection):
                         steps.failed(
                             'Event triggered but notification response failed'
                         )
-                    notifier.stop()
+                    notification.stop()
                     break
                 sleep(1)
 
@@ -892,32 +891,35 @@ class RawRPC(operations.rpc.RPC):
                                           'for an rpc-reply.')
 
 
-class NotificationThread(Thread):
-    """Thread listening for event notifications from the device."""
-
+class Notification():
+    """ Listens for notifications, decodes, and verifies if any exists """
     def __init__(self, device, **request):
-        Thread.__init__(self)
         self.device = device
         self._stop_event = Event()
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
         self.request = request
-        self._id = str(uuid.uuid4())
+        self._event_triggered = False
+
+    @property
+    def event_triggered(self):
+        return self._event_triggered
+
+    @event_triggered.setter
+    def event_triggered(self, event_triggered):
+        self._event_triggered = event_triggered
 
     @property
     def request(self):
         return self._request
 
-    @property
-    def id(self):
-        return self._id
-
     @request.setter
     def request(self, request={}):
+        """ Sets the request property and propagates request's properties to the class """
         request_data = request['request']
         self.returns = request_data.get('returns')
         self.response_verify = request_data.get('verifier')
-        self.decode_rxesponse = request_data.get('decode')
+        self.decode_response = request_data.get('decode')
         self.namespace = request_data.get('namespace')
         self.sub_mode = request_data['format'].get('sub_mode', 'SAMPLE')
         self.encoding = request_data['format'].get('encoding', 'PROTO')
@@ -925,10 +927,11 @@ class NotificationThread(Thread):
         self.stream_max = request_data['format'].get('stream_max', 0)
         self.time_delta = 0
         self.result = None
-        self.event_triggered = False
+        self._event_triggered = False
         self._request = request_data
 
-    def run(self):
+    def start(self):
+        """ Start taking notifications from the device until subscribe stream's max duration """
         t1 = datetime.datetime.now()
         logger.info(banner('Starting subscribe stream'))
         while not self.stopped():
@@ -939,9 +942,9 @@ class NotificationThread(Thread):
             logger.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(td.seconds))
 
             if notif and self.event_triggered:
-                resp_elements = self.request['decode'](notif.notification_xml)
+                resp_elements = self.decode_response(notif.notification_xml)
                 if resp_elements and self.returns:
-                    self.result = self._request['verifier'](resp_elements, self.returns)
+                    self.result = self.response_verify(resp_elements, self.returns)
             if self.stream_max:
                 self.time_delta = td.seconds
                 if td.seconds > self.stream_max:
