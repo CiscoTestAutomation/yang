@@ -5,7 +5,6 @@ import atexit
 import logging
 import subprocess
 import datetime
-import asyncio
 import lxml.etree as et
 from time import sleep
 from threading import Event
