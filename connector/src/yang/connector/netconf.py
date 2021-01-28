@@ -7,7 +7,6 @@ import subprocess
 import datetime
 import lxml.etree as et
 from time import sleep
-from threading import Event
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
@@ -430,11 +429,11 @@ class Netconf(manager.Manager, BaseConnection):
 
     def notify_wait(self, steps):
         """ Activate notification listener and check results """
-        notification = self.active_notification.get(self)
+        notification = self.active_notifications.get(self)
         if notification:
             if steps.result.code != 1:
                 notification.stop()
-                del self.active_notification[self]
+                del self.active_notifications[self]
                 return
             notification.event_triggered = True
             # Activate notification listener and process the notifications if any exists
@@ -894,11 +893,11 @@ class Notification():
     """ Listens for notifications, decodes, and verifies if any exists """
     def __init__(self, device, **request):
         self.device = device
-        self._stop_event = Event()
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
         self.request = request
         self._event_triggered = False
+        self._stopped = False
 
     @property
     def event_triggered(self):
@@ -933,7 +932,7 @@ class Notification():
         """ Start taking notifications from the device until subscribe stream's max duration """
         t1 = datetime.datetime.now()
         logger.info(banner('Starting subscribe stream'))
-        while not self.stopped():
+        while not self._stopped:
             t2 = datetime.datetime.now()
             td = t2 - t1
             notif = self.device.take_notification(timeout=1)
@@ -954,7 +953,8 @@ class Notification():
                     break
 
     def stop(self):
-        self._stop_event.set()
+        self._stopped = True
 
+    @property
     def stopped(self):
-        return self._stop_event.is_set()
+        return self._stopped
