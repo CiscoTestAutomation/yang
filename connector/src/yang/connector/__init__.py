@@ -7,7 +7,7 @@ Restconf implementation is coming next.
 """
 
 # metadata
-__version__ = '20.10'
+__version__ = '21.2'
 __author__ = (
     'Jonathan Yang <yuekyang@cisco.com>',
     'Siming Yuan <siyuan@cisco.com',
@@ -18,13 +18,14 @@ __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc.'
 
 
-from .netconf import Netconf
+from .netconf import Netconf, NetconfEnxr
 from .gnmi import Gnmi
 from .gnmi import GnmiNotification
 from . import xpath_util
 
 __all__ = (
     'Netconf',
+    'NetconfEnxr'
     'Gnmi',
     'GnmiNotification',
     'xpath_util'

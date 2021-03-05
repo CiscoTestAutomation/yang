@@ -3,43 +3,27 @@
 import re
 import atexit
 import logging
+import subprocess
 import datetime
 import lxml.etree as et
+from time import sleep
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
+from ncclient.operations.retrieve import GetReply
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
 try:
-    from pyats.log.utils import banner
     from pyats.connections import BaseConnection
     from pyats.utils.secret_strings import to_plaintext
+    from pyats.log.utils import banner
 except ImportError:
     class BaseConnection:
         pass
 
-# try to record usage statistics
-#  - only internal cisco users will have stats.CesMonitor module
-#  - below code does nothing for DevNet users -  we DO NOT track usage stats
-#    for PyPI/public/customer users
-try:
-    # new internal cisco-only pkg since devnet release
-    from ats.cisco.stats import CesMonitor
-except Exception:
-    try:
-        # legacy pyats version, stats was inside utils module
-        from ats.utils.stats import CesMonitor
-    except Exception:
-        CesMonitor = None
-finally:
-    if CesMonitor is not None:
-        # CesMonitor exists -> this is an internal cisco user
-        CesMonitor(action=__name__, application='pyATS Packages').post()
-
 # create a logger for this module
 logger = logging.getLogger(__name__)
-
 
 nccl = logging.getLogger("ncclient")
 # The 'Sending' messages are logged at level INFO.
@@ -206,9 +190,20 @@ class Netconf(manager.Manager, BaseConnection):
 
         # instanciate ncclient Manager
         # (can't use super due to mro change)
-        manager.Manager.__init__(self, session=session,
-                                       device_handler=device_handler,
-                                       timeout=self.timeout)
+        manager.Manager.__init__(
+            self, session=session, device_handler=device_handler,
+            timeout=self.timeout)
+
+        self.active_notifications = {}
+
+    def subscribe(self, request):
+        """ Creates a notification listener and mark it as active """
+        notification = Notification(self, request=request)
+
+        if not self.connected:
+            self.connect()
+
+        self.active_notifications[self] = notification
 
     @property
     def session(self):
@@ -366,11 +361,13 @@ class Netconf(manager.Manager, BaseConnection):
         # check credentials
         if self.connection_info.get('credentials'):
             try:
-                defaults['username'] = str(self.connection_info['credentials']['netconf']['username'])
+                defaults['username'] = str(
+                    self.connection_info['credentials']['netconf']['username'])
             except Exception:
                 pass
             try:
-                defaults['password'] = to_plaintext(self.connection_info['credentials']['netconf']['password'])
+                defaults['password'] = to_plaintext(
+                    self.connection_info['credentials']['netconf']['password'])
             except Exception:
                 pass
 
@@ -384,15 +381,16 @@ class Netconf(manager.Manager, BaseConnection):
                                            .sshtunnel.tunnel_ip
                     defaults['port'] = tunnel_port
             except AttributeError as err:
-                raise AttributeError("Cannot add ssh tunnel. Connection %s may "
-                                     "not have ip/host or port.\n%s" % (self.via, err))
+                raise AttributeError("Cannot add ssh tunnel. \
+                Connection %s may not have ip/host or port.\n%s"
+                                     % (self.via, err))
             del defaults['sshtunnel']
 
         defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
 
         try:
             self.session.connect(**defaults)
-            logger.info(banner('NETCONF CONNECTED'))
+            logger.info('NETCONF CONNECTED')
         except Exception:
             if self.session.transport:
                 self.session.close()
@@ -410,6 +408,31 @@ class Netconf(manager.Manager, BaseConnection):
         '''
 
         self.session.close()
+
+    def notify_wait(self, steps):
+        """ Activate notification listener and check results """
+        notification = self.active_notifications.get(self)
+        if notification:
+            if steps.result.code != 1:
+                notification.stop()
+                del self.active_notifications[self]
+                return
+            notification.event_triggered = True
+            # Activate notification listener and process the notifications if any exists
+            notification.start()
+            while notification.time_delta < notification.stream_max:
+                if notification.result is not None:
+                    if notification.result:
+                        steps.passed(
+                            'Event triggered and notification response passed'
+                        )
+                    else:
+                        steps.failed(
+                            'Event triggered but notification response failed'
+                        )
+                    notification.stop()
+                    break
+                sleep(1)
 
     def configure(self, msg):
         '''configure
@@ -556,7 +579,8 @@ class Netconf(manager.Manager, BaseConnection):
         if m:
             rpc._id = m.group(1)
             rpc._listener.register(rpc._id, rpc)
-            logger.debug('Found message-id="%s" in your rpc, which is good.', rpc._id)
+            logger.debug(
+                'Found message-id="%s" in your rpc, which is good.', rpc._id)
         else:
             logger.warning('Cannot find message-id in your rpc. You may '
                            'expect an exception when receiving rpc-reply '
@@ -569,12 +593,242 @@ class Netconf(manager.Manager, BaseConnection):
 
     def __getattr__(self, method):
         # avoid the __getattr__ from Manager class
-        if (hasattr(manager, 'VENDOR_OPERATIONS') and method in manager.VENDOR_OPERATIONS) \
-            or method in manager.OPERATIONS:
+        if hasattr(manager, 'VENDOR_OPERATIONS') and method \
+                in manager.VENDOR_OPERATIONS or method in manager.OPERATIONS:
             return super().__getattr__(method)
         else:
             raise AttributeError("'%s' object has no attribute '%s'"
                                  % (self.__class__.__name__, method))
+
+
+class NetconfEnxr():
+    """Subclass using POSIX pipes to Communicate NETCONF messaging."""
+
+    chunk = re.compile('(\n#+\\d+\n)')
+    rpc_pipe_err = """
+        <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <rpc-error>
+            <error-type>transport</error-type>
+            <error-tag>resource-denied</error-tag>
+            <error-severity>error</error-severity>
+            <error-message>No pipe data returned</error-message>
+        </rpc-error>
+        </rpc-reply>"""
+
+    def __init__(self, *args, **kwargs):
+        self.manager = None
+        self.proc = None
+        self.buf = None
+        self.server_capabilities = None
+
+    def get_rpc(self, elements):
+        """Return string representation of lxml element with rpc."""
+        rpc_element = et.Element(
+            'rpc',
+            attrib={'message-id': '101'},
+            nsmap={None: "urn:ietf:params:xml:ns:netconf:base:1.0"}
+        )
+        rpc_element.append(elements)
+        return et.tostring(rpc_element,
+                           pretty_print=True).decode()
+
+    def recv_data(self):
+        """Retrieve data from process pipe."""
+        if not self.proc:
+            logger.info('Not connected.')
+        else:
+            buf = ''
+            while True:
+                # TODO: Could be better...1 byte at a time...
+                # but, too much buffer and it deadlocks!!
+                data = self.proc.stdout.read(1)
+
+                if not data:
+                    return GetReply(self.rpc_pipe_err)
+
+                buf += data
+
+                if buf.endswith('\n##'):
+                    buf = buf[:-3]
+                    break
+
+            logger.info(buf)
+            buf = buf[buf.find('<'):]
+            reply = re.sub(self.chunk, '', buf)
+            return GetReply(reply)
+
+    def request(self, rpc):
+        """Send a message to process pipe."""
+        if not self.proc:
+            logger.info('Not connected.')
+        else:
+            if et.iselement(rpc):
+                if not rpc.tag.endswith('rpc'):
+                    rpc = self.get_rpc(rpc)
+                else:
+                    rpc = et.tostring(rpc, pretty_print=True).decode()
+            rpc_str = '\n#' + str(len(rpc)) + '\n' + rpc + '\n##\n'
+            logger.info(rpc_str)
+            self.proc.stdin.write(rpc_str)
+            self.proc.stdin.flush()
+
+            return self.recv_data()
+
+    def configure(self, msg):
+        '''configure
+
+        High-level api: configure is a common method of console, vty and ssh
+        sessions, however it is not supported by this NetconfEnxr class. This is
+        just a placeholder in case someone mistakenly calls config method in a
+        netconf session. An Exception is thrown out with explanation.
+
+        Parameters
+        ----------
+
+        msg : `str`
+            Any config CLI need to be sent out.
+
+        Raises
+        ------
+
+        Exception
+            configure is not a supported method of this Netconf class.
+        '''
+
+        raise Exception('configure is not a supported method of this NetconfEnxr '
+                        'class, since a more suitable method, edit_config, is '
+                        'recommended. There are nine netconf operations '
+                        'defined by RFC 6241, and edit-config is one of them. '
+                        'Also users can build any netconf requst, including '
+                        'invalid netconf requst as negative test cases, in '
+                        'XML format and send it by method request.')
+
+    def edit_config(self, target=None, config=None, **kwargs):
+        """Send edit-config."""
+        target = target
+        config = config
+        target_element = et.Element('target')
+        et.SubElement(target_element, target)
+        edit_config_element = et.Element('edit-config')
+        edit_config_element.append(target_element)
+        edit_config_element.append(config)
+        return self.send_cmd(self.get_rpc(edit_config_element))
+
+    def get_config(self, source=None, filter=None, **kwargs):
+        """Send get-config."""
+        source = source
+        filter = filter
+        source_element = et.Element('source')
+        et.SubElement(source_element, source)
+        get_config_element = et.Element('get-config')
+        get_config_element.append(source_element)
+        get_config_element.append(filter)
+        return self.send_cmd(self.get_rpc(get_config_element))
+
+    def get(self, filter=None, **kwargs):
+        filter_arg = filter
+        get_element = et.Element('get')
+        if isinstance(filter_arg, tuple):
+            type, filter_content = filter_arg
+            if type == "xpath":
+                get_element.attrib["select"] = filter_content
+            elif type == "subtree":
+                filter_element = et.Element('filter')
+                filter_element.append(filter_content)
+                get_element.append(filter_element)
+        else:
+            get_element.append(filter_arg)
+        return self.send_cmd(self.get_rpc(get_element))
+
+    def commit(self, **kwargs):
+        commit_element = et.Element('commit')
+        return self.send_cmd(self.get_rpc(commit_element))
+
+    def discard_changes(self, **kwargs):
+        discard_element = et.Element('discard-changes')
+        return self.send_cmd(self.get_rpc(discard_element))
+
+    def lock(self, target=None, **kwargs):
+        target = target
+        store_element = et.Element(target)
+        target_element = et.Element('target')
+        target_element.append(store_element)
+        lock_element = et.Element('lock')
+        lock_element.append(target_element)
+        return self.send_cmd(self.get_rpc(lock_element))
+
+    def unlock(self, target=None, **kwargs):
+        target = target
+        store_element = et.Element(target)
+        target_element = et.Element('target')
+        target_element.append(store_element)
+        unlock_element = et.Element('unlock')
+        unlock_element.append(target_element)
+        return self.send_cmd(self.get_rpc(unlock_element))
+
+    def dispatch(self, rpc_command=None, **kwargs):
+        rpc = rpc_command
+        return self.send_cmd(rpc)
+
+    @property
+    def connected(self):
+        """Check for active connection."""
+
+        return self.server_capabilities is not None and self.proc.poll() \
+            is None
+
+    def connect(self, timeout=None):
+        """Connect to ENXR pipe."""
+        if self.connected:
+            msg = 'Already connected'
+
+        CMD = ['netconf_sshd_proxy', '-i', '0', '-o', '1', '-u', 'lab']
+        BUFSIZE = 8192
+
+        p = subprocess.Popen(CMD, bufsize=BUFSIZE,
+                             stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT,
+                             universal_newlines=True)
+
+        buf = ''
+        try:
+            while True:
+                data = p.stdout.read(1)
+                if not data:
+                    logger.info('No data received for hello')
+                    p.terminate()
+                    return
+
+                buf += data
+                if buf.endswith(']]>]]>'):
+                    buf = buf[buf.find('<'):-6]
+                    logger.info('Hello received')
+                    break
+
+            p.stdin.write(
+                '<?xml version="1.0" encoding="UTF-8"?><hello '
+                'xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><capabilities>'
+                '<capability>urn:ietf:params:netconf:base:1.1</capability>'
+                '</capabilities></hello>]]>]]>'
+            )
+            p.stdin.flush()
+            self.proc = p
+            self.buf = ''
+            elements = et.fromstring(buf)
+            self.server_capabilities = [e.text for e in elements.iter()
+                                        if hasattr(e, 'text')]
+            # TODO: Notification stream interferes with get-schema
+            msg = "NETCONF CONNECTED PIPE"
+        except:
+            msg = 'Not connected, Something went wrong'
+        return msg
+
+    def disconnect(self):
+        """Disconnect from ENXR pipe."""
+        if self.connected:
+            self.proc.terminate()
+            logger.info("NETCONF DISCONNECT PIPE")
 
 
 class RawRPC(operations.rpc.RPC):
@@ -615,3 +869,74 @@ class RawRPC(operations.rpc.RPC):
                 logger.info('Timeout. No rpc-reply received.')
                 raise TimeoutExpiredError('ncclient timed out while waiting '
                                           'for an rpc-reply.')
+
+
+class Notification():
+    """ Listens for notifications, decodes, and verifies if any exists """
+    def __init__(self, device, **request):
+        self.device = device
+        self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.DEBUG)
+        self.request = request
+        self._event_triggered = False
+        self._stopped = False
+
+    @property
+    def event_triggered(self):
+        return self._event_triggered
+
+    @event_triggered.setter
+    def event_triggered(self, event_triggered):
+        self._event_triggered = event_triggered
+
+    @property
+    def request(self):
+        return self._request
+
+    @request.setter
+    def request(self, request={}):
+        """ Sets the request property and propagates request's properties to the class """
+        request_data = request['request']
+        self.returns = request_data.get('returns')
+        self.response_verify = request_data.get('verifier')
+        self.decode_response = request_data.get('decode')
+        self.namespace = request_data.get('namespace')
+        self.sub_mode = request_data['format'].get('sub_mode', 'SAMPLE')
+        self.encoding = request_data['format'].get('encoding', 'PROTO')
+        self.sample_interval = request_data['format'].get('sample_interval', 10)
+        self.stream_max = request_data['format'].get('stream_max', 0)
+        self.time_delta = 0
+        self.result = None
+        self._event_triggered = False
+        self._request = request_data
+
+    def start(self):
+        """ Start taking notifications from the device until subscribe stream's max duration """
+        t1 = datetime.datetime.now()
+        logger.info(banner('Starting subscribe stream'))
+        while not self._stopped:
+            t2 = datetime.datetime.now()
+            td = t2 - t1
+            notif = self.device.take_notification(timeout=1)
+
+            logger.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(td.seconds))
+
+            if notif and self.event_triggered:
+                resp_elements = self.decode_response(notif.notification_xml)
+                if resp_elements and self.returns:
+                    self.result = self.response_verify(resp_elements, self.returns)
+            if self.stream_max:
+                self.time_delta = td.seconds
+                if td.seconds > self.stream_max:
+                    logger.info(banner(
+                        'Subscribe stream expired after {} seconds'.format(td.seconds)
+                    ))
+                    self.stop()
+                    break
+
+    def stop(self):
+        self._stopped = True
+
+    @property
+    def stopped(self):
+        return self._stopped
