@@ -658,21 +658,7 @@ class NetconfEnxr():
             return GetReply(reply)
 
     def request(self, rpc):
-        """Send a message to process pipe."""
-        if not self.proc:
-            logger.info('Not connected.')
-        else:
-            if et.iselement(rpc):
-                if not rpc.tag.endswith('rpc'):
-                    rpc = self.get_rpc(rpc)
-                else:
-                    rpc = et.tostring(rpc, pretty_print=True).decode()
-            rpc_str = '\n#' + str(len(rpc)) + '\n' + rpc + '\n##\n'
-            logger.info(rpc_str)
-            self.proc.stdin.write(rpc_str)
-            self.proc.stdin.flush()
-
-            return self.recv_data()
+        return self.send_cmd(rpc)
 
     def configure(self, msg):
         '''configure
@@ -702,6 +688,23 @@ class NetconfEnxr():
                         'Also users can build any netconf requst, including '
                         'invalid netconf requst as negative test cases, in '
                         'XML format and send it by method request.')
+
+    def send_cmd(self, rpc):
+        """Send a message to process pipe."""
+        if not self.proc:
+            logger.info('Not connected.')
+        else:
+            if et.iselement(rpc):
+                if not rpc.tag.endswith('rpc'):
+                    rpc = self.get_rpc(rpc)
+                else:
+                    rpc = et.tostring(rpc, pretty_print=True).decode()
+            rpc_str = '\n#' + str(len(rpc)) + '\n' + rpc + '\n##\n'
+            logger.info(rpc_str)
+            self.proc.stdin.write(rpc_str)
+            self.proc.stdin.flush()
+
+            return self.recv_data()
 
     def edit_config(self, target=None, config=None, **kwargs):
         """Send edit-config."""
