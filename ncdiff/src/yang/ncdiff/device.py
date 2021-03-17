@@ -1,10 +1,7 @@
 import os
 import re
-import six
-import json
 import logging
 from lxml import etree
-from copy import deepcopy
 from ncclient import manager, operations, transport, xml_
 from yang.connector import Netconf
 
@@ -18,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 nc_url = xml_.BASE_NS_1_0
 yang_url = 'urn:ietf:params:xml:ns:yang:1'
-tailf_url= 'http://tail-f.com/ns/netconf/params/1.1'
+tailf_url = 'http://tail-f.com/ns/netconf/params/1.1'
 ncEvent_url = xml_.NETCONF_NOTIFICATION_NS
 config_tag = '{' + nc_url + '}config'
 filter_tag = '{' + nc_url + '}filter'
@@ -73,6 +70,7 @@ class ModelDevice(Netconf):
         self.models = {}
         self.nodes = {}
         self.compiler = None
+        self._models_loadable = None
 
     def __repr__(self):
         return '<{}.{} object at {}>'.format(self.__class__.__module__,
@@ -82,7 +80,7 @@ class ModelDevice(Netconf):
     @property
     def namespaces(self):
         if self.compiler is None:
-            raise ValueError('please first call scan_models() to build ' \
+            raise ValueError('please first call scan_models() to build '
                              'up supported namespaces of a device')
         else:
             device_namespaces = []
@@ -94,13 +92,88 @@ class ModelDevice(Netconf):
 
     @property
     def models_loadable(self):
-        regexp_str = 'module=([a-zA-Z0-9-]+)\&{0,1}'
+        if self._models_loadable is not None:
+            return self._models_loadable
+        NC_MONITORING = xml_.NETCONF_MONITORING_NS
+        YANG_LIB = 'urn:ietf:params:netconf:capability:yang-library'
+        YANG_LIB_1_0 = YANG_LIB + ':1.0'
+        NC_MONITORING_FILTER = """
+            <filter xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" type="subtree">
+              <netconf-state xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-monitoring">
+                <schemas/>
+              </netconf-state>
+            </filter>
+            """
+        YANG_LIB_FILTER = """
+            <filter xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" type="subtree">
+              <modules-state xmlns="urn:ietf:params:xml:ns:yang:ietf-yang-library">
+                <module/>
+              </modules-state>
+            </filter>
+            """
+
+        # RFC7895
+        if [c for c in self.server_capabilities
+                if c[:len(NC_MONITORING)] == NC_MONITORING]:
+            n = {'nc': nc_url, 'ncm': NC_MONITORING}
+            p = '/nc:rpc-reply/nc:data/ncm:netconf-state/ncm:schemas' \
+                '/ncm:schema/ncm:identifier'
+            try:
+                reply = super().execute(operations.retrieve.Get,
+                                        filter=NC_MONITORING_FILTER)
+                if reply.ok:
+                    self._models_loadable = \
+                        [n.text for n in reply.data.xpath(p, namespaces=n)]
+                    self._models_loadable.sort()
+            except Exception as e:
+                logger.warning(
+                    "Error when sending Netconf GET of /netconf-state/schemas "
+                    "from YANG module 'ietf-netconf-monitoring':\n{}"
+                    .format(e))
+            else:
+                if reply.ok:
+                    return self._models_loadable
+                else:
+                    logger.warning(
+                        "Error in Netconf reply when getting "
+                        "/netconf-state/schemas from YANG module "
+                        "'ietf-netconf-monitoring':\n{}".format(reply))
+
+        # RFC7950 section 5.6.4
+        if [c for c in self.server_capabilities
+                if c[:len(YANG_LIB_1_0)] == YANG_LIB_1_0]:
+            n = {'nc': nc_url, 'yanglib': YANG_LIB}
+            p = '/nc:rpc-reply/nc:data/yanglib:modules-state' \
+                '/yanglib:module/yanglib:name'
+            try:
+                reply = super().execute(operations.retrieve.Get,
+                                        filter=YANG_LIB_FILTER)
+                if reply.ok:
+                    self._models_loadable = \
+                        [n.text for n in reply.data.xpath(p, namespaces=n)]
+                    self._models_loadable.sort()
+            except Exception as e:
+                logger.warning(
+                    "Error when sending Netconf GET of /modules-state/module "
+                    "from YANG module 'ietf-yang-library':\n{}".format(e))
+            else:
+                if reply.ok:
+                    return self._models_loadable
+                else:
+                    logger.warning(
+                        "Error in Netconf reply when getting "
+                        "/modules-state/module from YANG module "
+                        "'ietf-yang-library':\n{}".format(reply))
+
+        # RFC6020 section 5.6.4
+        regexp_str = r'module=([a-zA-Z0-9-]+)\&{0,1}'
         modules = []
         for capability in iter(self.server_capabilities):
             match = re.search(regexp_str, capability)
             if match:
                 modules.append(match.group(1))
-        return sorted(modules)
+        self._models_loadable = sorted(modules)
+        return self._models_loadable
 
     @property
     def models_loaded(self):
@@ -255,17 +328,18 @@ class ModelDevice(Netconf):
                     xml = f.read()
                 parser = etree.XMLParser(remove_blank_text=True)
                 tree = etree.XML(xml, parser)
+                m = Model(tree)
             else:
-                raise ValueError("'{}' is not a file with extension 'xml'" \
+                raise ValueError("'{}' is not a file with extension 'xml'"
                                  .format(model))
         elif model in self.models_loadable:
             if self.compiler is None:
-                raise ValueError('please first call scan_models() to build ' \
+                raise ValueError('please first call scan_models() to build '
                                  'up supported namespaces of a device')
             else:
                 m = self.compiler.compile(model)
         else:
-            raise ValueError("argument 'model' {} needs to be either a model " \
+            raise ValueError("argument 'model' {} needs to be either a model "
                              "name or a compiled model xml file".format(model))
         if m.name in self.models:
             self.nodes = {k: v for k, v in self.nodes.items()
@@ -300,8 +374,8 @@ class ModelDevice(Netconf):
         def check_models(models):
             missing_models = set(models) - set(self.models_loaded)
             if missing_models:
-                raise ModelMissing('please load model {} by calling ' \
-                                   'method load_model() of device {}' \
+                raise ModelMissing('please load model {} by calling '
+                                   'method load_model() of device {}'
                                    .format(str(list(missing_models))[1:-1],
                                            self))
 
@@ -332,7 +406,7 @@ class ModelDevice(Netconf):
                 cls = manager.OPERATIONS[operation]
             except KeyError:
                 supported_operations = list(manager.OPERATIONS.keys())
-                raise ValueError("supported operations are {}, but not '{}'" \
+                raise ValueError("supported operations are {}, but not '{}'"
                                  .format(str(supported_operations)[1:-1],
                                          operation))
         else:
@@ -343,10 +417,10 @@ class ModelDevice(Netconf):
                 check_models(models)
                 roots = [k for k, v in self.roots.items()
                          if v in models and
-                            (get_access_type(v, k) == 'read-write' or
-                             get_access_type(v, k) == 'read-only')]
+                         (get_access_type(v, k) == 'read-write' or
+                          get_access_type(v, k) == 'read-only')]
                 if not roots:
-                    raise ValueError('no readable roots found in your ' \
+                    raise ValueError('no readable roots found in your '
                                      'models: {}'.format(str(models)[1:-1]))
                 kwargs['filter'] = build_filter(models, roots)
         elif cls == operations.retrieve.GetConfig:
@@ -357,9 +431,9 @@ class ModelDevice(Netconf):
                 check_models(models)
                 roots = [k for k, v in self.roots.items()
                          if v in models and
-                            get_access_type(v, k) == 'read-write']
+                         get_access_type(v, k) == 'read-write']
                 if not roots:
-                    raise ValueError('no writable roots found in your ' \
+                    raise ValueError('no writable roots found in your '
                                      'models: {}'.format(str(models)[1:-1]))
                 kwargs['filter'] = build_filter(models, roots)
         elif cls == operations.edit.EditConfig:
@@ -511,19 +585,19 @@ class ModelDevice(Netconf):
         '''
 
         def get_child(parent, tag):
-            children = [i for i in parent.iter(tag=tag) \
-                        if i.attrib['type'] != 'choice' and \
-                           i.attrib['type'] != 'case' and \
-                           is_parent(parent, i)]
+            children = [i for i in parent.iter(tag=tag)
+                        if i.attrib['type'] != 'choice' and
+                        i.attrib['type'] != 'case' and
+                        is_parent(parent, i)]
             if len(children) == 1:
                 return children[0]
             elif len(children) > 1:
                 if parent.getparent() is None:
-                    raise ModelError("more than one root has tag '{}'" \
+                    raise ModelError("more than one root has tag '{}'"
                                      .format(tag))
                 else:
-                    raise ModelError("node {} has more than one child with " \
-                                     "tag '{}'" \
+                    raise ModelError("node {} has more than one child with "
+                                     "tag '{}'"
                                      .format(self.get_xpath(parent), tag))
             else:
                 return None
@@ -710,7 +784,7 @@ class ModelDevice(Netconf):
             matches = [i for i in self.namespaces if i[src[0]] == ns]
             c = len(matches)
             if c > 1:
-                raise ModelError("device supports more than one {} '{}': {}" \
+                raise ModelError("device supports more than one {} '{}': {}"
                                  .format(Tag.STR[src[0]], ns, matches))
             if c == 1:
                 return matches[0][dst[0]]
@@ -719,14 +793,14 @@ class ModelDevice(Netconf):
                 matches = [i for i in special if i[src[0]] == ns]
                 if len(matches) == 1:
                     return matches[0][dst[0]]
-            raise ValueError("device does not support {} '{}' " \
-                             "when parsing tag '{}'" \
+            raise ValueError("device does not support {} '{}' "
+                             "when parsing tag '{}'"
                              .format(Tag.STR[src[0]], ns, tag))
 
         tag_ns, tag_name = split_tag(tag)
         if src[1] == Tag.NO_OMIT and not tag_ns:
-            raise ValueError("tag '{}' does not contain prefix or namespace " \
-                             "but it is supposed to be Tag.NO_OMIT" \
+            raise ValueError("tag '{}' does not contain prefix or namespace "
+                             "but it is supposed to be Tag.NO_OMIT"
                              .format(tag))
         elif not tag_ns:
             tag_ns = default_ns
@@ -778,7 +852,7 @@ class ModelDevice(Netconf):
         ret = {url: get_prefix(url) for url in urls}
         i = 0
         for url in [url for url in ret if ret[url] is None]:
-            logger.warning('{} cannot be found in namespaces of any ' \
+            logger.warning('{} cannot be found in namespaces of any '
                            'models'.format(url))
             ret[url] = 'ns{:02d}'.format(i)
             i += 1
