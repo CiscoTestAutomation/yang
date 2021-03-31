@@ -135,7 +135,7 @@ distribute_staging:
 	@echo "--------------------------------------------------------------------"
 	@echo "Copying all distributable to $(STAGING_PKGS)"
 	@test -d $(BUILDDIR) || { echo "Nothing to distribute! Exiting..."; exit 1; }
-	@ssh -q $(PROD_USER) 'test -e $(STAGING_PKGS)/$(PKG_PATH) || mkdir $(STAGING_PKGS)/$(PKG_PATH)'
+	@ssh -q $(PROD_USER) 'test -e $(STAGING_PKGS)/$(PKG_PATH) || mkdir -p $(STAGING_PKGS)/$(PKG_PATH)'
 	@scp $(DISTDIR)/* $(PROD_USER):$(STAGING_PKGS)/$(PKG_PATH)/
 	@echo ""
 	@echo "Done."
