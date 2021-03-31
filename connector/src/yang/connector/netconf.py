@@ -418,20 +418,24 @@ class Netconf(manager.Manager, BaseConnection):
                 del self.active_notifications[self]
                 return
             notification.event_triggered = True
-            log.info('NOTIFICATION EVENT TRIGGERED')
+            logger.info('NOTIFICATION EVENT TRIGGERED')
             # Activate notification listener and process the notifications if any exists
             notification.start()
             while notification.time_delta < notification.stream_max:
-                log.info('WAITING FOR NOTIFICATION RESPONSE')
+                logger.info('WAITING FOR NOTIFICATION RESPONSE')
                 if notification.result is not None:
                     if notification.result is True:
                         steps.passed(
-                            'NOTIFICATION RESPONSE PASSED'
+                            '\n' + banner(
+                                'NOTIFICATION RESPONSE PASSED'
+                            )
                         )
                     else:
                         steps.failed(
-                            'NOTIFICATION RESPONSE FAILED:\n{0}'.format(
-                                str(notification.result)
+                            '\n' + banner(
+                                'NOTIFICATION RESPONSE FAILED:\n\n{0}'.format(
+                                    str(notification.result)
+                                )
                             )
                         )
                     notification.stop()
