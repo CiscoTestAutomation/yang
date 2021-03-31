@@ -10,6 +10,9 @@ log = logging.getLogger(__name__)
 
 def get_prefix(origin):
     # TODO: calculate a prefix instead of combining config?
+    if origin == 'openconfig':
+        # No prefix support for openconfig
+        return None
     prefix_path = proto.gnmi_pb2.Path()
     prefix_path.origin = origin
     return prefix_path

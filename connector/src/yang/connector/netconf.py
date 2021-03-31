@@ -418,21 +418,30 @@ class Netconf(manager.Manager, BaseConnection):
                 del self.active_notifications[self]
                 return
             notification.event_triggered = True
+            log.info('NOTIFICATION EVENT TRIGGERED')
             # Activate notification listener and process the notifications if any exists
             notification.start()
             while notification.time_delta < notification.stream_max:
+                log.info('WAITING FOR NOTIFICATION RESPONSE')
                 if notification.result is not None:
-                    if notification.result:
+                    if notification.result is True:
                         steps.passed(
-                            'Event triggered and notification response passed'
+                            'NOTIFICATION RESPONSE PASSED'
                         )
                     else:
                         steps.failed(
-                            'Event triggered but notification response failed'
+                            'NOTIFICATION RESPONSE FAILED:\n{0}'.format(
+                                str(notification.result)
+                            )
                         )
                     notification.stop()
                     break
                 sleep(1)
+            else:
+                steps.failed(
+                    '\n' + banner('STREAM TIMED OUT WITHOUT RESPONSE')
+                )
+                notification.stop()
 
     def configure(self, msg):
         '''configure

@@ -94,7 +94,12 @@ class GnmiNotification(Thread):
         resp = self.decode_response(updates)
         if resp:
             if self.event_triggered:
-                self.result = self.response_verify(resp, self.returns.copy())
+                if not self.returns:
+                    self.log.error('No notification values to check')
+                    self.result = False
+                    self.stop()
+                else:
+                    self.result = self.response_verify(resp, self.returns.copy())
         else:
             self.log.error('No values in subscribe response')
             self.stop()
@@ -713,7 +718,7 @@ class Gnmi(BaseConnection):
                 format.get('request_mode', 'STREAM'),
                 format.get('sub_mode', 'SAMPLE'),
                 format.get('encoding', 'JSON_IETF'),
-                self.gnmi._NS_IN_S * cmd.get('sample_interval', 10),
+                self.gnmi._NS_IN_S * format.get('sample_interval', 10),
                 prefix=prefix
             )
             if format.get('request_mode', 'STREAM') == 'ONCE':
@@ -731,7 +736,7 @@ class Gnmi(BaseConnection):
                     return False
             else:
                 cmd['namespace'] = ns
-                cmd['decode'] = self.decode_update
+                cmd['decode'] = self.decode_notification
                 subscribe_thread = GnmiNotification(
                     self,
                     subscribe_response,
@@ -754,21 +759,32 @@ class Gnmi(BaseConnection):
                 del self.active_notifications[self]
                 return
             notifier.event_triggered = True
-            log.info('Notification event triggered')
+            log.info('NOTIFICATION EVENT TRIGGERED')
             while notifier.time_delta < notifier.stream_max:
-                log.info('Waiting for notification')
+                log.info('WAITING FOR NOTIFICATION RESPONSE')
                 if notifier.result is not None:
-                    if notifier.result:
+                    if notifier.result is True:
                         steps.passed(
-                            'Event triggered and notification response passed'
+                            '\n' + banner(
+                                'NOTIFICATION RESPONSE PASSED'
+                            )
                         )
                     else:
                         steps.failed(
-                            'Event triggered but notification response failed'
+                            '\n' + banner(
+                                'NOTIFICATION RESPONSE FAILED:\n\n{0}'.format(
+                                    str(notifier.result)
+                                )
+                            )
                         )
                     notifier.stop()
                     break
                 sleep(1)
+            else:
+                steps.failed(
+                    '\n' + banner('STREAM TIMED OUT WITHOUT RESPONSE')
+                )
+                notifier.stop()
 
     def get_updates(self, response):
         """Notification check."""
