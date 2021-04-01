@@ -464,7 +464,7 @@ class Gnmi(BaseConnection):
         json_val = base64.b64decode(val).decode('utf-8')
         return json.loads(json_val)
 
-    def decode_notification(self, response, namespace):
+    def decode_notification(self, response, namespace={}):
         """Decode a response from the google.protobuf into a dict."""
         if isinstance(response, dict):
             resp_dict = response
