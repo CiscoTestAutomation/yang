@@ -113,6 +113,7 @@ class GnmiNotification(Thread):
         try:
             for response in self.responses:
                 if self.stopped():
+                    self.time_delta = self.stream_max
                     self.log.info("Terminating notification thread")
                     break
                 if response.HasField('sync_response'):
