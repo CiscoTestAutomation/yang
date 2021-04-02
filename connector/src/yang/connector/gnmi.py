@@ -737,7 +737,7 @@ class Gnmi(BaseConnection):
                     return False
             else:
                 cmd['namespace'] = ns
-                cmd['decode'] = self.decode_notification
+                cmd['decode'] = self.decode_update
                 subscribe_thread = GnmiNotification(
                     self,
                     subscribe_response,
