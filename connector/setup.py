@@ -181,8 +181,8 @@ setup(
     install_requires =  [
         'paramiko >= 1.15.1',
         'lxml >= 3.3.0',
-        'ncclient >= 0.6.6',
-        'grpcio <= 1.28.1',
+        'ncclient >= 0.6.6, < 0.6.10',
+        'grpcio <= 1.36.1',
         'cisco-gnmi >= 1.0.13, < 2.0.0',
     ],
 
