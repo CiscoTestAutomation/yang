@@ -7,6 +7,7 @@ import subprocess
 import datetime
 import lxml.etree as et
 from time import sleep
+from threading import Thread, Event
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
@@ -195,15 +196,6 @@ class Netconf(manager.Manager, BaseConnection):
             timeout=self.timeout)
 
         self.active_notifications = {}
-
-    def subscribe(self, request):
-        """ Creates a notification listener and mark it as active """
-        notification = Notification(self, request=request)
-
-        if not self.connected:
-            self.connect()
-
-        self.active_notifications[self] = notification
 
     @property
     def session(self):
@@ -409,43 +401,53 @@ class Netconf(manager.Manager, BaseConnection):
 
         self.session.close()
 
+    def subscribe(self, request):
+        """ Creates a notification listener and mark it as active """
+        notifier = Notification(self, request=request)
+        notifier.start()
+        if request['format']['request_mode'] == 'ON_CHANGE':
+            # Get ready for trigger event
+            notifier.event_triggered = True
+        self.active_notifications[self] = notifier
+
     def notify_wait(self, steps):
         """ Activate notification listener and check results """
-        notification = self.active_notifications.get(self)
-        if notification:
+        notifier = self.active_notifications.get(self)
+        if notifier:
             if steps.result.code != 1:
-                notification.stop()
+                notifier.stop()
                 del self.active_notifications[self]
                 return
-            notification.event_triggered = True
-            logger.info('NOTIFICATION EVENT TRIGGERED')
-            # Activate notification listener and process the notifications if any exists
-            notification.start()
-            while notification.time_delta < notification.stream_max:
-                logger.info('WAITING FOR NOTIFICATION RESPONSE')
-                if notification.result is not None:
-                    if notification.result is True:
+            notifier.event_triggered = True
+            logger.info(banner('NOTIFICATION EVENT TRIGGERED'))
+            wait_for_sample = notifier.sample_interval - 1
+            cntr = 1.0
+            while cntr < float(notifier.stream_max):
+                logger.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(
+                    cntr)
+                )
+                cntr += 1
+                if notifier.result is not None and wait_for_sample <= 0:
+                    notifier.stop()
+                    if notifier.result is True:
                         steps.passed(
-                            '\n' + banner(
-                                'NOTIFICATION RESPONSE PASSED'
-                            )
+                            '\n' + banner('NOTIFICATION RESPONSE PASSED')
                         )
                     else:
                         steps.failed(
-                            '\n' + banner(
-                                'NOTIFICATION RESPONSE FAILED:\n\n{0}'.format(
-                                    str(notification.result)
-                                )
-                            )
+                            '\n' + banner('NOTIFICATION RESPONSE FAILED')
                         )
-                    notification.stop()
                     break
                 sleep(1)
+                wait_for_sample -= 1
             else:
+                notifier.stop()
                 steps.failed(
                     '\n' + banner('STREAM TIMED OUT WITHOUT RESPONSE')
                 )
-                notification.stop()
+
+            if self in self.active_notifications:
+                del self.active_notifications[self]
 
     def configure(self, msg):
         '''configure
@@ -887,12 +889,14 @@ class RawRPC(operations.rpc.RPC):
                                           'for an rpc-reply.')
 
 
-class Notification():
+class Notification(Thread):
     """ Listens for notifications, decodes, and verifies if any exists """
     def __init__(self, device, **request):
+        Thread.__init__(self)
         self.device = device
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
+        self._stop_event = Event()
         self.request = request
         self._event_triggered = False
         self._stopped = False
@@ -920,39 +924,59 @@ class Notification():
         self.sub_mode = request_data['format'].get('sub_mode', 'SAMPLE')
         self.encoding = request_data['format'].get('encoding', 'PROTO')
         self.sample_interval = request_data['format'].get('sample_interval', 10)
+        if self.sub_mode == 'ON_CHANGE':
+            self.sample_interval = 0
         self.stream_max = request_data['format'].get('stream_max', 0)
         self.time_delta = 0
         self.result = None
         self._event_triggered = False
         self._request = request_data
 
-    def start(self):
-        """ Start taking notifications from the device until subscribe stream's max duration """
+    def run(self):
+        """ Start taking notifications until subscribe stream times out."""
         t1 = datetime.datetime.now()
-        logger.info(banner('Starting subscribe stream'))
-        while not self._stopped:
-            t2 = datetime.datetime.now()
-            td = t2 - t1
-            notif = self.device.take_notification(timeout=1)
+        t2 = datetime.datetime.now()
+        td = t2 - t1
+        # Wait until after first sample period if sampling
+        wait_for_sample = self.sample_interval - 1
 
-            logger.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(td.seconds))
+        try:
+            while self.time_delta < self.stream_max:
+                t2 = datetime.datetime.now()
+                td = t2 - t1
 
-            if notif and self.event_triggered:
-                resp_elements = self.decode_response(notif.notification_xml)
-                if resp_elements and self.returns:
-                    self.result = self.response_verify(resp_elements, self.returns)
-            if self.stream_max:
-                self.time_delta = td.seconds
-                if td.seconds > self.stream_max:
-                    logger.info(banner(
-                        'Subscribe stream expired after {} seconds'.format(td.seconds)
-                    ))
-                    self.stop()
+                if self.stopped():
+                    self.time_delta = self.stream_max
+                    self.log.info("Terminating notification thread")
                     break
+                if self.stream_max:
+                    t2 = datetime.datetime.now()
+                    td = t2 - t1
+                    self.time_delta = td.seconds
+                    if td.seconds > self.stream_max:
+                        self.stop()
+                        break
+
+                notif = self.device.take_notification(timeout=1)
+
+                if notif and wait_for_sample <= 0:
+                    resp_elements = self.decode_response(
+                        notif.notification_xml
+                    )
+                    if resp_elements and self.returns:
+                        self.result = self.response_verify(
+                            resp_elements, self.returns
+                        )
+                        self.stop()
+                        break
+                wait_for_sample -= 1
+        except Exception as exc:
+            self.result = str(exc)
+            self.log.error(str(exc))
 
     def stop(self):
-        self._stopped = True
+        self.log.info("Stopping notification stream")
+        self._stop_event.set()
 
-    @property
     def stopped(self):
-        return self._stopped
+        return self._stop_event.is_set()
