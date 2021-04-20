@@ -91,18 +91,18 @@ class GnmiNotification(Thread):
         """
         subscribe_resp = json_format.MessageToDict(response)
         updates = subscribe_resp['update']
-        resp = self.decode_response(updates)
-        if resp:
+        for update in updates['update']:
+            resp = self.decode_response(update, self.namespace)
             if self.event_triggered:
-                if not self.returns:
-                    self.log.error('No notification values to check')
-                    self.result = False
-                    self.stop()
+                if resp:
+                    if not self.returns:
+                        self.log.error('No notification values to check')
+                        self.result = False
+                        self.stop()
+                    else:
+                        self.result = self.response_verify(resp, self.returns.copy())
                 else:
-                    self.result = self.response_verify(resp, self.returns.copy())
-        else:
-            self.log.error('No values in subscribe response')
-            self.stop()
+                    self.log.error('No values in subscribe response')
 
     def run(self):
         """Check for inbound notifications."""
@@ -112,10 +112,18 @@ class GnmiNotification(Thread):
         ))
         try:
             for response in self.responses:
+                self.log.info(response)
                 if self.stopped():
                     self.time_delta = self.stream_max
                     self.log.info("Terminating notification thread")
                     break
+                if self.stream_max:
+                    t2 = datetime.now()
+                    td = t2 - t1
+                    self.time_delta = td.seconds
+                    if td.seconds > self.stream_max:
+                        self.stop()
+                        break
                 if response.HasField('sync_response'):
                     self.log.info('Subscribe syncing response')
                 if response.HasField('update'):
@@ -126,17 +134,7 @@ class GnmiNotification(Thread):
                         )
                     )
                     self.process_opfields(response)
-                    self.log.info('Subscribe opfields processed')
-                if self.stream_max:
-                    t2 = datetime.now()
-                    td = t2 - t1
-                    self.log.info(
-                        'Subscribe time {0} seconds'.format(td.seconds)
-                    )
-                    self.time_delta = td.seconds
-                    if td.seconds > self.stream_max:
-                        self.stop()
-                        break
+
         except Exception as exc:
             msg = ''
             if hasattr(exc, 'details'):
@@ -148,6 +146,7 @@ class GnmiNotification(Thread):
             self.result = msg
 
     def stop(self):
+        self.log.info("Stopping notification stream")
         self._stop_event.set()
 
     def stopped(self):
@@ -730,14 +729,15 @@ class Gnmi(BaseConnection):
                     if response.HasField('update'):
                         resp = json_format.MessageToDict(response)
                         update = resp.get('update')
-                        opfields = self.decode_update(
-                            update.get('update')
+                        opfields = self.decode_opfields(
+                            update.get('update'),
+                            ns
                         )
                         return response_verify(opfields, returns)
                     return False
             else:
                 cmd['namespace'] = ns
-                cmd['decode'] = self.decode_update
+                cmd['decode'] = self.decode_opfields
                 subscribe_thread = GnmiNotification(
                     self,
                     subscribe_response,
@@ -745,6 +745,8 @@ class Gnmi(BaseConnection):
                 )
                 subscribe_thread.start()
                 self.active_notifications[self] = subscribe_thread
+                if cmd['format']['request_mode'] == 'ON_CHANGE':
+                    subscribe_thread.event_triggered = True
                 return True
         except Exception as exc:
             msg = ''
@@ -760,32 +762,33 @@ class Gnmi(BaseConnection):
                 del self.active_notifications[self]
                 return
             notifier.event_triggered = True
-            log.info('NOTIFICATION EVENT TRIGGERED')
-            while notifier.time_delta < notifier.stream_max:
-                log.info('WAITING FOR NOTIFICATION RESPONSE')
-                if notifier.result is not None:
+            log.info(banner('NOTIFICATION EVENT TRIGGERED'))
+            wait_for_sample = notifier.sample_interval - 1
+            cntr = 1.0
+            while cntr < float(notifier.stream_max):
+                log.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(
+                    cntr)
+                )
+                cntr += 1
+                if notifier.result is not None and wait_for_sample <= 0:
+                    notifier.stop()
                     if notifier.result is True:
                         steps.passed(
-                            '\n' + banner(
-                                'NOTIFICATION RESPONSE PASSED'
-                            )
+                            '\n' + banner('NOTIFICATION RESPONSE PASSED')
                         )
                     else:
                         steps.failed(
-                            '\n' + banner(
-                                'NOTIFICATION RESPONSE FAILED:\n\n{0}'.format(
-                                    str(notifier.result)
-                                )
-                            )
+                            '\n' + banner('NOTIFICATION RESPONSE FAILED')
                         )
-                    notifier.stop()
                     break
                 sleep(1)
+                wait_for_sample -= 1
             else:
-                steps.failed(
-                    '\n' + banner('STREAM TIMED OUT WITHOUT RESPONSE')
-                )
                 notifier.stop()
+                steps.failed('\n' + banner('STREAM TIMED OUT WITHOUT RESPONSE'))
+
+            if self in self.active_notifications:
+                del self.active_notifications[self]
 
     def get_updates(self, response):
         """Notification check."""

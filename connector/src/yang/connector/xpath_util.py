@@ -14,7 +14,6 @@ def get_prefix(origin):
         # No prefix support for openconfig
         return None
     prefix_path = proto.gnmi_pb2.Path()
-    prefix_path.origin = origin
     return prefix_path
 
 
