@@ -28,24 +28,26 @@ BUILDDIR      = $(shell pwd)/__build__
 PROD_USER     = pyadm@pyats-ci
 PROD_PKGS     = /auto/pyats/packages
 STAGING_PKGS  = /auto/pyats/staging/packages
+STAGING_EXT_PKGS  = /auto/pyats/staging/packages_external
 PYTHON        = python
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
 
-.PHONY: clean package distribute distribute_staging develop undevelop \
-		populate_dist_dir help docs distribute_docs test
+.PHONY: clean package distribute distribute_staging distribute_staging_external\
+        develop undevelop populate_dist_dir help docs distribute_docs test
 
 help:
 	@echo "Please use 'make <target>' where <target> is one of"
 	@echo ""
-	@echo "package              : Build the package"
-	@echo "test                 : Test the package"
-	@echo "distribute           : Distribute the package to PyPi server"
-	@echo "distribute_staging   : Distribute the package to staging area"
-	@echo "clean                : Remove build artifacts"
-	@echo "develop              : Build and install development package"
-	@echo "undevelop            : Uninstall development package"
-	@echo "docs                 : Build Sphinx documentation for this package"
+	@echo "package                      : Build the package"
+	@echo "test                         : Test the package"
+	@echo "distribute                   : Distribute the package to PyPi server"
+	@echo "distribute_staging           : Distribute the package to staging area"
+	@echo "distribute_staging_external  : Distribute the package to external staging area"
+	@echo "clean                        : Remove build artifacts"
+	@echo "develop                      : Build and install development package"
+	@echo "undevelop                    : Uninstall development package"
+	@echo "docs                         : Build Sphinx documentation for this package"
 
 docs:
 	@echo ""
@@ -137,6 +139,17 @@ distribute_staging:
 	@test -d $(BUILDDIR) || { echo "Nothing to distribute! Exiting..."; exit 1; }
 	@ssh -q $(PROD_USER) 'test -e $(STAGING_PKGS)/$(PKG_PATH) || mkdir -p $(STAGING_PKGS)/$(PKG_PATH)'
 	@scp $(DISTDIR)/* $(PROD_USER):$(STAGING_PKGS)/$(PKG_PATH)/
+	@echo ""
+	@echo "Done."
+	@echo ""
+
+distribute_staging_external:
+	@echo ""
+	@echo "--------------------------------------------------------------------"
+	@echo "Copying all distributable to $(STAGING_EXT_PKGS)"
+	@test -d $(BUILDDIR) || { echo "Nothing to distribute! Exiting..."; exit 1; }
+	@ssh -q $(PROD_USER) 'test -e $(STAGING_EXT_PKGS)/$(PKG_PATH) || mkdir -p $(STAGING_EXT_PKGS)/$(PKG_PATH)'
+	@scp $(DISTDIR)/* $(PROD_USER):$(STAGING_EXT_PKGS)/$(PKG_PATH)/
 	@echo ""
 	@echo "Done."
 	@echo ""
