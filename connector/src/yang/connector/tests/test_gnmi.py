@@ -70,9 +70,8 @@ class TestXpathUtil(unittest.TestCase):
 
     def test_get_prefix(self):
         """Test creating a prefix Path gNMI class."""
-        path = xpath_util.get_prefix('openconfig')
+        path = xpath_util.get_prefix('rfc7951')
         self.assertIsInstance(path, proto.gnmi_pb2.Path)
-        self.assertEquals(path.origin, 'openconfig')
 
 
 if __name__ == '__main__':
