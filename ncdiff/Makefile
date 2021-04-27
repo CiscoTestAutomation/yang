@@ -23,7 +23,6 @@
 
 # Variables
 PKG_NAME      = yang.ncdiff
-PKG_PATH      = yang/ncdiff
 BUILDDIR      = $(shell pwd)/__build__
 PROD_USER     = pyadm@pyats-ci
 PROD_PKGS     = /auto/pyats/packages
@@ -126,8 +125,8 @@ distribute:
 	@echo "--------------------------------------------------------------------"
 	@echo "Copying all distributable to $(PROD_PKGS)"
 	@test -d $(BUILDDIR) || { echo "Nothing to distribute! Exiting..."; exit 1; }
-	@ssh -q $(PROD_USER) 'test -e $(PROD_PKGS)/$(PKG_PATH) || mkdir $(PROD_PKGS)/$(PKG_PATH)'
-	@scp $(DISTDIR)/* $(PROD_USER):$(PROD_PKGS)/$(PKG_PATH)/
+	@ssh -q $(PROD_USER) 'test -e $(PROD_PKGS)/$(PKG_NAME) || mkdir $(PROD_PKGS)/$(PKG_NAME)'
+	@scp $(DISTDIR)/* $(PROD_USER):$(PROD_PKGS)/$(PKG_NAME)/
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -137,8 +136,8 @@ distribute_staging:
 	@echo "--------------------------------------------------------------------"
 	@echo "Copying all distributable to $(STAGING_PKGS)"
 	@test -d $(BUILDDIR) || { echo "Nothing to distribute! Exiting..."; exit 1; }
-	@ssh -q $(PROD_USER) 'test -e $(STAGING_PKGS)/$(PKG_PATH) || mkdir -p $(STAGING_PKGS)/$(PKG_PATH)'
-	@scp $(DISTDIR)/* $(PROD_USER):$(STAGING_PKGS)/$(PKG_PATH)/
+	@ssh -q $(PROD_USER) 'test -e $(STAGING_PKGS)/$(PKG_NAME) || mkdir -p $(STAGING_PKGS)/$(PKG_NAME)'
+	@scp $(DISTDIR)/* $(PROD_USER):$(STAGING_PKGS)/$(PKG_NAME)/
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -148,8 +147,8 @@ distribute_staging_external:
 	@echo "--------------------------------------------------------------------"
 	@echo "Copying all distributable to $(STAGING_EXT_PKGS)"
 	@test -d $(BUILDDIR) || { echo "Nothing to distribute! Exiting..."; exit 1; }
-	@ssh -q $(PROD_USER) 'test -e $(STAGING_EXT_PKGS)/$(PKG_PATH) || mkdir -p $(STAGING_EXT_PKGS)/$(PKG_PATH)'
-	@scp $(DISTDIR)/* $(PROD_USER):$(STAGING_EXT_PKGS)/$(PKG_PATH)/
+	@ssh -q $(PROD_USER) 'test -e $(STAGING_EXT_PKGS)/$(PKG_NAME) || mkdir -p $(STAGING_EXT_PKGS)/$(PKG_NAME)'
+	@scp $(DISTDIR)/* $(PROD_USER):$(STAGING_EXT_PKGS)/$(PKG_NAME)/
 	@echo ""
 	@echo "Done."
 	@echo ""
