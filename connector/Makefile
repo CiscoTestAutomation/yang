@@ -90,6 +90,7 @@ develop:
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
 	@echo ""
 
+	@pip uninstall -y yang.connector || true
 	@./setup.py develop -q
 
 	@echo "Completed building and installing: $@"
