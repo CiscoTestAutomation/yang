@@ -171,12 +171,14 @@ class Netconf(manager.Manager, BaseConnection):
         '''
         __init__ instantiates a single connection instance.
         '''
-        # set defaults
+        # set default timeout
         kwargs.setdefault('timeout', 30)
 
         # instanciate BaseConnection
         # (could use super...)
         BaseConnection.__init__(self, *args, **kwargs)
+        if 'timeout' in self.connection_info:
+            self.timeout = self.connection_info['timeout']
 
         # shortwire Ncclient device handling portion
         # and create just the DeviceHandler
@@ -326,7 +328,6 @@ class Netconf(manager.Manager, BaseConnection):
         defaults = {
             'host': None,
             'port': 830,
-            'timeout': 30,
             'username': None,
             'password': None,
             'key_filename': None,
