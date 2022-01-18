@@ -1,6 +1,7 @@
 import os
 import logging
-from collections import OrderedDict, Iterable
+from collections.abc import Iterable
+from collections import OrderedDict
 import base64
 import json
 from threading import Thread, Event
