@@ -728,10 +728,12 @@ class Gnmi(BaseConnection):
                 returns = cmd.get('returns')
                 for response in subscribe_response:
                     if response.HasField('update'):
+                        log.info("GNMI response:\n==============\n{}".format(response))
                         resp = json_format.MessageToDict(response)
                         update = resp.get('update')
+                        updates = update.get('update')
                         opfields = self.decode_opfields(
-                            update.get('update'),
+                            updates[0] if isinstance(updates, list) else updates,
                             ns
                         )
                         return response_verify(opfields, returns)
