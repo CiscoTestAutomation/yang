@@ -28,7 +28,7 @@ PROD_USER     = pyadm@pyats-ci
 PROD_PKGS     = /auto/pyats/packages
 STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages_external
-PYTHON        = python
+PYTHON        = python3
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
 
@@ -54,7 +54,7 @@ docs:
 	@echo "Building $(PKG_NAME) documentation for preview: $@"
 	@echo ""
 
-	@./setup.py docs
+	@$(PYTHON) setup.py docs
 
 	@echo "Completed building docs for preview."
 	@echo ""
@@ -70,13 +70,7 @@ package:
 	@echo "Building $(PKG_NAME) distributable: $@"
 	@echo ""
 
-    # TBD - remove
-	#@./setup.py test
-	#@mkdir -p $(DISTDIR)
-
-    # NOTE : Only specify --universal if the package works for both py2 and py3
-    # https://packaging.python.org/en/latest/distributing.html#universal-wheels
-	@./setup.py bdist_wheel --dist-dir=$(DISTDIR)
+	@$(PYTHON) setup.py bdist_wheel --dist-dir=$(DISTDIR)
 
 	@echo "Completed building: $@"
 	@echo ""
@@ -89,7 +83,7 @@ develop:
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@./setup.py develop -q
+	@$(PYTHON) setup.py develop -q
 
 	@echo "Completed building and installing: $@"
 	@echo ""
@@ -102,7 +96,7 @@ undevelop:
 	@echo "Uninstalling $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@./setup.py develop -q --uninstall
+	@$(PYTHON) setup.py develop -q --uninstall
 
 	@echo "Completed uninstalling: $@"
 	@echo ""
@@ -115,7 +109,7 @@ clean:
 	@echo "Removing make directory: $(BUILDDIR)"
 	@rm -rf $(BUILDDIR)
 	@echo "Removing build artifacts ..."
-	@./setup.py clean
+	@$(PYTHON) setup.py clean
 	@echo ""
 	@echo "Done."
 	@echo ""

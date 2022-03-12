@@ -28,7 +28,7 @@ PROD_USER     = pyadm@pyats-ci
 PROD_PKGS     = /auto/pyats/packages
 STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages_external
-PYTHON        = pythons
+PYTHON        = python3
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
 
@@ -70,14 +70,8 @@ package:
 	@echo "Building $(PKG_NAME) distributable: $@"
 	@echo ""
 
-    # TBD - remove
-	#@python3 setup.py test
-	#@mkdir -p $(DISTDIR)
-
-    # NOTE : Only specify --universal if the package works for both py2 and py3
-    # https://packaging.python.org/en/latest/distributing.html#universal-wheels
-	@python3 setup.py bdist_wheel --dist-dir=$(DISTDIR)
-	@python3 setup.py sdist --dist-dir=$(DISTDIR)
+	@$(PYTHON) setup.py bdist_wheel --dist-dir=$(DISTDIR)
+	@$(PYTHON) setup.py sdist --dist-dir=$(DISTDIR)
 
 	@echo "Completed building: $@"
 	@echo ""
@@ -91,7 +85,7 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y yang.connector || true
-	@python3 setup.py develop -q
+	@$(PYTHON) setup.py develop -q
 
 	@echo "Completed building and installing: $@"
 	@echo ""
@@ -104,7 +98,7 @@ undevelop:
 	@echo "Uninstalling $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@python3 setup.py develop -q --uninstall
+	@$(PYTHON) setup.py develop -q --uninstall
 
 	@echo "Completed uninstalling: $@"
 	@echo ""
@@ -117,7 +111,7 @@ clean:
 	@echo "Removing make directory: $(BUILDDIR)"
 	@rm -rf $(BUILDDIR)
 	@echo "Removing build artifacts ..."
-	@python3 setup.py clean
+	@$(PYTHON) setup.py clean
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -160,7 +154,7 @@ changelogs:
 	@echo "--------------------------------------------------------------------"
 	@echo "Generating changelog file"
 	@echo ""
-	@python3 -c "from ciscodistutils.make_changelog import main; main('./docs/changelog/undistributed', './docs/changelog/undistributed.rst')"
+	@$(PYTHON) -c "from ciscodistutils.make_changelog import main; main('./docs/changelog/undistributed', './docs/changelog/undistributed.rst')"
 	@echo "pyats.contrib changelog created..."
 	@echo ""
 	@echo "Done."
