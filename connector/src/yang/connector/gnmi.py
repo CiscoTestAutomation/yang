@@ -1,4 +1,5 @@
 import os
+import copy
 import logging
 from collections.abc import Iterable
 from collections import OrderedDict
@@ -348,7 +349,8 @@ class Gnmi(BaseConnection):
             password = to_plaintext(password)
         builder.set_call_authentication(username, password)
         # builder.construct() connects grpc channel and returns client instance
-        self.builder = builder
+        # builder.construct() in connect() will reset builder object so saving original
+        self.original_builder = builder
         self.gnmi = None
 
     active_notifications = {}
@@ -526,6 +528,7 @@ class Gnmi(BaseConnection):
         # builder.construct() connects grpc channel and returns client
         if self.connected:
             return
+        self.builder = copy.deepcopy(self.original_builder)
         self.gnmi, self.channel = self.builder.construct(return_channel=True)
         resp = self.capabilities()
         if resp:
