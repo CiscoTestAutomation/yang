@@ -83,6 +83,7 @@ develop:
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
 	@echo ""
 
+	@pip3 uninstall -y yang.ncdiff || true
 	@$(PYTHON) setup.py develop -q
 
 	@echo "Completed building and installing: $@"
