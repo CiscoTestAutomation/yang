@@ -170,7 +170,7 @@ setup(
     # package dependencies
     install_requires =  [
         'pyang >= 1.7.3',
-        'ncclient >= 0.6.3, < 0.6.10',
+        'ncclient >= 0.6.3',
         'requests >= 2.18.4',
         'cisco-gnmi',
         'xmljson >= 0.1.9',
