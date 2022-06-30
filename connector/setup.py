@@ -184,7 +184,8 @@ setup(
         'ncclient >= 0.6.6',
         'grpcio',
         'cisco-gnmi >= 1.0.13',
-        'protobuf ~= 3.20',
+        'protobuf ~= 3.20;python_version>="3.7"',
+        'protobuf < 3.20;python_version<"3.7"',
     ],
 
     # any additional groups of dependencies.
