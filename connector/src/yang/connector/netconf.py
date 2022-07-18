@@ -295,6 +295,7 @@ class Netconf(manager.Manager, BaseConnection):
                             port: 830
                             username: admin
                             password: admin
+                            timeout: 120
 
         Code Example::
 
@@ -335,6 +336,7 @@ class Netconf(manager.Manager, BaseConnection):
             'hostkey_verify': False,
             'look_for_keys': False,
             'ssh_config': None,
+            'timeout': 60
             }
         defaults.update(self.connection_info)
 
@@ -363,6 +365,12 @@ class Netconf(manager.Manager, BaseConnection):
                     self.connection_info['credentials']['netconf']['password'])
             except Exception:
                 pass
+
+        # check timeout
+        try:
+            defaults['timeout'] = int(self.connection_info['timeout'])
+        except (KeyError, ValueError):
+            pass
 
         # support sshtunnel
         if 'sshtunnel' in defaults:
