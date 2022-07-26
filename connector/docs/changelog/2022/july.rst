@@ -1,7 +1,7 @@
 July 2022
 ==========
 
-July 21 - Yang v22.7 
+July 26 - Yang v22.7 
 ------------------------
 
 
@@ -24,3 +24,10 @@ Upgrade Instructions
 
 Changelogs
 ^^^^^^^^^^
+
+ --------------------------------------------------------------------------------
+                                 Fix
+ --------------------------------------------------------------------------------
+ * yang.connector
+     * Modified setup.py:
+         * Update version pinning for protobuf depending on python version
