@@ -696,7 +696,7 @@ class Gnmi(BaseConnection):
         subscribe_response = self.gnmi.subscribe_xpaths(
             subscribe_xpaths,
             cmd_format.get('request_mode', 'STREAM'),
-            format.get('sub_mode', 'SAMPLE'),
+            cmd_format.get('sub_mode', 'SAMPLE'),
             cmd_format.get('encoding', 'JSON_IETF'),
             self.gnmi._NS_IN_S * cmd_format.get('sample_interval', 10),
             prefix=prefix)
