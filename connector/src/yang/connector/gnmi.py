@@ -1,8 +1,6 @@
 import os
 import copy
 import logging
-from collections.abc import Iterable
-from collections import OrderedDict
 import base64
 import json
 from threading import Thread, Event
@@ -67,7 +65,9 @@ class GnmiNotification(Thread):
         return self._request
 
     @request.setter
-    def request(self, request={}):
+    def request(self, request = None):
+        if request is None:
+            request = {}
         self.returns = request.get('returns')
         self.response_verify = request.get('verifier')
         self.decode_response = request.get('decode')
@@ -140,7 +140,7 @@ class GnmiNotification(Thread):
         except Exception as exc:
             msg = ''
             if hasattr(exc, 'details'):
-                msg += 'details: ' + exc.details()
+                msg += f'details: {exc.details()}'
             if hasattr(exc, 'debug_error_string'):
                 msg += exc.debug_error_string()
             if not msg:
@@ -159,7 +159,7 @@ class Gnmi(BaseConnection):
     """Session handling for gNMI connections.
 
     Can be used with pyATS same as yang.connector.Netconf is used or
-    can be used as a standlone module.
+    can be used as a standalone module.
 
     Methods:
 
@@ -168,7 +168,7 @@ class Gnmi(BaseConnection):
     get(dict): gNMI Get mode='STATE'. Input xpath/value pairs (value optional).
     get_config(dict): gNMI Get mode='CONFIG'. Input xpath/value pairs.
     subscribe(dict): gNMI Subscribe.  Input xpath/value pairs and format
-    notify_wait(dict, callback): Notify subscibe thread that event occured, \
+    notify_wait(dict, callback): Notify subscribe thread that event occurred, \
         "callback" must be a class with passed, and failed methods and a \
         result class containing "code" property.
 
@@ -369,15 +369,19 @@ class Gnmi(BaseConnection):
         """Return True if session is connected."""
         return self.gnmi
 
-    def path_elem_to_xpath(self, path_elem, namespace={}, opfields=[]):
+    def path_elem_to_xpath(self, path_elem, namespace = None, opfields = None):
         """Convert a Path structure to an Xpath."""
+        if namespace is None:
+            namespace = {}
+        if opfields is None:
+            opfields = []
         elems = path_elem.get('elem', [])
         xpath = []
         for elem in elems:
             name = elem.get('name', '')
             if name:
                 for mod in namespace.values():
-                    name = name.replace(mod + ':', '')
+                    name = name.replace(f'{mod}:', '')
                 xpath.append(name)
             key = elem.get('key', '')
             if key:
@@ -391,15 +395,15 @@ class Gnmi(BaseConnection):
                     ))
         return '/' + '/'.join(xpath)
 
-    def get_opfields(self, val, xpath_str, opfields=[], namespace={}):
+    def get_opfields(self, val, xpath_str, opfields=None, namespace=None):
+        if opfields is None:
+            opfields = []
+        if namespace is None:
+            namespace = {}
         if isinstance(val, dict):
             for name, dict_val in val.items():
-                opfields = self.get_opfields(
-                    dict_val,
-                    xpath_str + '/' + name,
-                    opfields,
-                    namespace
-                )
+                opfields = self.get_opfields(dict_val, f'{xpath_str}/{name}', opfields, namespace)
+
         elif isinstance(val, list):
             for item in val:
                 self.get_opfields(item, xpath_str, opfields, namespace)
@@ -409,8 +413,7 @@ class Gnmi(BaseConnection):
             for mod in namespace.values():
                 name = name.replace(mod + ':', '')
             xpath_str = '/'.join(xpath_list)
-            opfields.append((val, xpath_str + '/' + name))
-
+            opfields.append((val, f'{xpath_str}/{name}'))
         return opfields
 
     def decode_opfields(self, update={}, namespace={}):
@@ -632,9 +635,8 @@ class Gnmi(BaseConnection):
             )
             log.info('\nGNMI response:\n{0}\n{1}'.format(15 * '=', str(resp)))
             # Do fixup on response
-            response = self.decode_notification(resp, ns)
             # TODO: Do we need to send back deletes?
-            return response
+            return self.decode_notification(resp, ns)
         except Exception as exc:
             msg = ''
             if hasattr(exc, 'details'):
@@ -711,90 +713,79 @@ class Gnmi(BaseConnection):
         """
         if not self.connected:
             self.connect()
-        try:
-            # Convert xpath to path element
-            ns, msg, origin = xpath_util.xml_path_to_path_elem(cmd)
-            prefix = xpath_util.get_prefix(origin) if self.support_prefix else None
-            format = cmd['format']
-            subscribe_xpaths = msg['get']
-            subscribe_response = self.gnmi.subscribe_xpaths(
-                subscribe_xpaths,
-                format.get('request_mode', 'STREAM'),
-                format.get('sub_mode', 'SAMPLE'),
-                format.get('encoding', 'JSON_IETF'),
-                self.gnmi._NS_IN_S * format.get('sample_interval', 10),
-                prefix=prefix
+        # Convert xpath to path element
+        ns, msg, origin = xpath_util.xml_path_to_path_elem(cmd)
+        prefix = xpath_util.get_prefix(origin) if self.support_prefix else None
+        format = cmd['format']
+        subscribe_xpaths = msg['get']
+        subscribe_response = self.gnmi.subscribe_xpaths(
+            subscribe_xpaths,
+            format.get('request_mode', 'STREAM'),
+            format.get('sub_mode', 'SAMPLE'),
+            format.get('encoding', 'JSON_IETF'),
+            self.gnmi._NS_IN_S * format.get('sample_interval', 10),
+            prefix=prefix
+        )
+        if format.get('request_mode', 'STREAM') == 'ONCE':
+            # Do fixup in response
+            response_verify = cmd.get('verifier')
+            returns = cmd.get('returns')
+            for response in subscribe_response:
+                if response.HasField('update'):
+                    log.info("GNMI response:\n==============\n{}".format(response))
+                    resp = json_format.MessageToDict(response)
+                    update = resp.get('update')
+                    updates = update.get('update')
+                    opfields = self.decode_opfields(
+                        updates[0] if isinstance(updates, list) else updates,
+                        ns
+                    )
+                    return response_verify(opfields, returns)
+                return False
+        else:
+            cmd['namespace'] = ns
+            cmd['decode'] = self.decode_opfields
+            subscribe_thread = GnmiNotification(
+                self,
+                subscribe_response,
+                **cmd
             )
-            if format.get('request_mode', 'STREAM') == 'ONCE':
-                # Do fixup in response
-                response_verify = cmd.get('verifier')
-                returns = cmd.get('returns')
-                for response in subscribe_response:
-                    if response.HasField('update'):
-                        log.info("GNMI response:\n==============\n{}".format(response))
-                        resp = json_format.MessageToDict(response)
-                        update = resp.get('update')
-                        updates = update.get('update')
-                        opfields = self.decode_opfields(
-                            updates[0] if isinstance(updates, list) else updates,
-                            ns
-                        )
-                        return response_verify(opfields, returns)
-                    return False
-            else:
-                cmd['namespace'] = ns
-                cmd['decode'] = self.decode_opfields
-                subscribe_thread = GnmiNotification(
-                    self,
-                    subscribe_response,
-                    **cmd
-                )
-                subscribe_thread.start()
-                self.active_notifications[self] = subscribe_thread
-                if cmd['format']['request_mode'] == 'ON_CHANGE':
-                    subscribe_thread.event_triggered = True
-                return True
-        except Exception as exc:
-            msg = ''
-            msg = exc.details() if hasattr(exc, 'details') else str(exc)
-            log.error(banner('ERROR: {0}'.format(msg)))
+            subscribe_thread.start()
+            self.active_notifications[self] = subscribe_thread
+            if cmd['format']['request_mode'] == 'ON_CHANGE':
+                subscribe_thread.event_triggered = True
+            return True
 
     def notify_wait(self, steps):
         """Activate notification thread and check results."""
-        notifier = self.active_notifications.get(self)
-        if notifier:
-            if steps.result.code != 1:
-                notifier.stop()
-                del self.active_notifications[self]
-                return
-            notifier.event_triggered = True
-            log.info(banner('NOTIFICATION EVENT TRIGGERED'))
-            wait_for_sample = notifier.sample_interval - 1
-            cntr = 1.0
-            while cntr < float(notifier.stream_max):
-                log.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(
-                    cntr)
-                )
-                cntr += 1
-                if notifier.result is not None and wait_for_sample <= 0:
-                    notifier.stop()
-                    if notifier.result is True:
-                        steps.passed(
-                            '\n' + banner('NOTIFICATION RESPONSE PASSED')
-                        )
-                    else:
-                        steps.failed(
-                            '\n' + banner('NOTIFICATION RESPONSE FAILED')
-                        )
-                    break
-                sleep(1)
-                wait_for_sample -= 1
-            else:
-                notifier.stop()
-                steps.failed('\n' + banner('STREAM TIMED OUT WITHOUT RESPONSE'))
+        if not (notifier := self.active_notifications.get(self)):
+            return
+        if steps.result.code != 1:
+            notifier.stop()
+            del self.active_notifications[self]
+            return
+        notifier.event_triggered = True
+        log.info(banner('NOTIFICATION EVENT TRIGGERED'))
+        wait_for_sample = notifier.sample_interval - 1
+        cntr = 1.0
+        while cntr < float(notifier.stream_max):
+            log.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(cntr))
 
-            if self in self.active_notifications:
-                del self.active_notifications[self]
+            cntr += 1
+            if notifier.result is not None and wait_for_sample <= 0:
+                notifier.stop()
+                if notifier.result is True:
+                    steps.passed('\n' + banner('NOTIFICATION RESPONSE PASSED'))
+                else:
+                    steps.failed('\n' + banner('NOTIFICATION RESPONSE FAILED'))
+                break
+            sleep(1)
+            wait_for_sample -= 1
+        else:
+            notifier.stop()
+            steps.failed('\n' + banner('STREAM TIMED OUT WITHOUT RESPONSE'))
+        if self in self.active_notifications:
+            del self.active_notifications[self]
 
     def get_updates(self, response):
         """Notification check."""
