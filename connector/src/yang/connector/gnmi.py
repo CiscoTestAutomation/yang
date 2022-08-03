@@ -416,6 +416,7 @@ class Gnmi(BaseConnection):
         if not xpath_str:
             log.error('Xpath not determined from response')
             return []
+        # TODO: the val depends on the encoding type
         val = update.get('val', {}).get('jsonIetfVal', '')
         if not val:
             val = update.get('val', {}).get('jsonVal', '')
@@ -425,9 +426,11 @@ class Gnmi(BaseConnection):
         json_val = base64.b64decode(val).decode('utf-8')
         update_val = json.loads(json_val)
         if not isinstance(update_val, (dict, list)):
+            # Just one value returned
             opfields.append((update_val, xpath_str))
             return opfields
         else:
+            # Reset opfields to avoid duplicates
             opfields = []
         if isinstance(update_val, dict):
             opfields = self.get_opfields(update_val, xpath_str, opfields,
@@ -466,6 +469,8 @@ class Gnmi(BaseConnection):
         for notify in notifies:
             ret_val = {}
             time_stamp = notify.get('timestamp', '')
+            # TODO: convert time_stamp from str nanoseconds since epoch time
+            # to datetime
             for update in notify['update']:
                 val_dict = self.decode_update(update, namespace=namespace)
                 opfields = self.decode_opfields(update, namespace=namespace)
@@ -603,10 +608,13 @@ class Gnmi(BaseConnection):
         if not self.connected:
             self.connect()
         try:
+            # Convert xpath to path element
             ns, msg, origin = xpath_util.xml_path_to_path_elem(
                 cmd, self.support_prefix)
             resp = self.gnmi.get_xpaths(msg.get('get', []), data_type=datatype)
             log.info('\nGNMI response:\n{0}\n{1}'.format(15 * '=', str(resp)))
+            # Do fixup on response
+            # TODO: Do we need to send back deletes?
             return self.decode_notification(resp, ns)
         except Exception as exc:
             msg = ''
@@ -680,6 +688,7 @@ class Gnmi(BaseConnection):
         """
         if not self.connected:
             self.connect()
+        # Convert xpath to path element
         ns, msg, origin = xpath_util.xml_path_to_path_elem(cmd)
         prefix = xpath_util.get_prefix(origin) if self.support_prefix else None
         cmd_format = cmd['format']
@@ -693,6 +702,7 @@ class Gnmi(BaseConnection):
             prefix=prefix)
 
         if cmd_format.get('request_mode', 'STREAM') == 'ONCE':
+            # Do fixup in response
             response_verify = cmd.get('verifier')
             returns = cmd.get('returns')
             for response in subscribe_response:
