@@ -368,7 +368,8 @@ class Gnmi(BaseConnection):
         elems = path_elem.get('elem', [])
         xpath = []
         for elem in elems:
-            if name := elem.get('name', ''):
+            name = elem.get('name', '')
+            if name:
                 for mod in namespace.values():
                     name = name.replace(f'{mod}:', '')
                 xpath.append(name)
