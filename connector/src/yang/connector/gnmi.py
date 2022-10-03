@@ -11,8 +11,8 @@ from xml.etree.ElementPath import xpath_tokenizer_re
 
 from google.protobuf import json_format
 
-from cisco_gnmi import ClientBuilder
-from cisco_gnmi import client
+from .cisco_gnmi import ClientBuilder
+from .cisco_gnmi import client
 
 from . import xpath_util
 
