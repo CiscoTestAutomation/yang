@@ -3,7 +3,7 @@ import re
 import json
 import logging
 from six import string_types
-from .cisco_gnmi import proto
+from . import proto
 
 log = logging.getLogger(__name__)
 
