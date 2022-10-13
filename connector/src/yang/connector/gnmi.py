@@ -179,39 +179,45 @@ class Gnmi(BaseConnection):
     capabilities(): gNMI Capabilities.
     set(dict): gNMI Set.  Input is namespace, xpath/value pairs.
     get(dict): gNMI Get mode='STATE'. Input xpath/value pairs (value optional).
-    get_config(dict): gNMI Get mode='CONFIG'. Input xpath/value pairs.
     subscribe(dict): gNMI Subscribe.  Input xpath/value pairs and format
-    notify_wait(dict, callback): Notify subscribe thread that event occurred, \
-        "callback" must be a class with passed, and failed methods and a \
-        result class containing "code" property.
 
     pyATS Examples:
 
     >>> from pyats.topology import loader
     >>> from yang.connector.gnmi import Gnmi
-    >>> testbed=loader.load('testbed_native_test.yaml')
-    >>> device=testbed.devices['ddmi-9500-2']
+    >>> testbed=loader.load('testbed.static.yaml')
+    >>> device=testbed.devices['uut']
     >>> device.connect(alias='gnmi', via='yang2')
     >>> #####################
-    >>> # Set/Get example   #
+    >>> # Get example       #
     >>> #####################
-    >>> content={
-    ... 'namespace': {'ios: 'http://cisco.com/ns/yang/Cisco-IOS-XE-native',
-    ... 'ios-cdp': 'http://cisco.com/ns/yang/Cisco-IOS-XE-cdp'},
-    ... 'nodes': [{'xpath': '/ios:native/ios:cdp/ios-cdp:holdtime',
-    ... 'value': '10'}]
-    ... }
-    >>> device.gnmi.set(content)
-    []
-    >>> content['nodes'][0].pop('value')
-    >>> device.gnmi.get(content)
-    [{'update': [(10, '/native/cdp/holdtime')]}]
+    >>> from yang.connector import proto
+    >>> request = proto.gnmi_pb2.GetRequest()
+    >>> request.type = proto.gnmi_pb2.GetRequest.DataType.Value('ALL')
+    >>> request.encoding = proto.gnmi_pb2.Encoding.Value('JSON_IETF')
+    >>> path = proto.gnmi_pb2.Path()
+    >>> path1, path2, path3, path4 = (
+            proto.gnmi_pb2.PathElem(),
+            proto.gnmi_pb2.PathElem(),
+            proto.gnmi_pb2.PathElem(),
+            proto.gnmi_pb2.PathElem()
+        )
+    >>> path1.name, path2.name, path3.name, path4.name = (
+            'syslog',
+            'messages',
+            'message',
+            'node-name'
+        )
+    >>> path.elem.extend([path1, path2, path3, path4])
+    >>> request.path.append(path)
+    >>> resp = device.gnmi.get(request)
+    >>> print(resp)
     >>> #####################
     >>> # Capabilities      #
     >>> #####################
-    >>> resp=device.gnmi.capabilities()
-    >>> resp.keys()
-    dict_keys(['supportedModels', 'supportedEncodings', 'gNMIVersion'])
+    >>> resp=device.capabilities()
+    >>> resp.gNMI_version
+    '0.7.0'
 
     Standalone Examples (pyATS not installed):
 
