@@ -189,6 +189,12 @@ class Gnmi(BaseConnection):
     >>> device=testbed.devices['uut']
     >>> device.connect(alias='gnmi', via='yang2')
     >>> #####################
+    >>> # Capabilities      #
+    >>> #####################
+    >>> resp=device.capabilities()
+    >>> resp.gNMI_version
+    '0.7.0'
+    >>> #####################
     >>> # Get example       #
     >>> #####################
     >>> from yang.connector import proto
@@ -212,12 +218,6 @@ class Gnmi(BaseConnection):
     >>> request.path.append(path)
     >>> resp = device.gnmi.get(request)
     >>> print(resp)
-    >>> #####################
-    >>> # Capabilities      #
-    >>> #####################
-    >>> resp=device.capabilities()
-    >>> resp.gNMI_version
-    '0.7.0'
    """
 
     def __init__(self, *args, **kwargs):
