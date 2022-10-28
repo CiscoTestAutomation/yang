@@ -176,10 +176,10 @@ class Gnmi(BaseConnection):
 
     Methods:
 
-    capabilities(): gNMI Capabilities.
-    set(dict): gNMI Set.  Input is namespace, xpath/value pairs.
-    get(dict): gNMI Get mode='STATE'. Input xpath/value pairs (value optional).
-    subscribe(dict): gNMI Subscribe.  Input xpath/value pairs and format
+    capabilities(): gNMI Capabilities.\n
+    set(dict): gNMI Set. Input is namespace, xpath/value pairs.\n
+    get(dict): gNMI Get mode='STATE'. Input xpath/value pairs (value optional).\n
+    subscribe(dict): gNMI Subscribe. Input xpath/value pairs and format.\n
 
     pyATS Examples:
 
@@ -331,9 +331,19 @@ class Gnmi(BaseConnection):
 
     @property
     def gnmi(self):
+        """Helper method to keep backwrads compatibility.
+
+        Returns:
+            Gnmi: self
+        """
         return self
 
     def connect(self):
+        """Connect to device using gNMI and get capabilities.
+
+        Raises:
+            gNMIException: No gNMI capabilities returned by device.
+        """
         resp = self.capabilities()
         if resp:
             log.info('\ngNMI version: {0} supported encodings: {1}\n\n'.format(
@@ -346,23 +356,68 @@ class Gnmi(BaseConnection):
             raise gNMIException('Connection not successful')
 
     def set(self, request):
+        """Gnmi SET method.
+
+        Args:
+            request (proto.gnmi_pb2.SetRequest): gNMI SetRequest object
+
+        Returns:
+            proto.gnmi_pb2.SetResponse: gNMI SetResponse object
+        """
         return self.service.Set(request, metadata=self.metadata)
 
     def configure(self, cmd):
+        """Helper method for backwards compatibility.
+
+        Args:
+            cmd (proto.gnmi_pb2.SetRequest): gNMI SetRequest object
+
+        Returns:
+            proto.gnmi_pb2.SetResponse: gNMI SetResponse object
+        """
         return self.set(cmd)
 
     def get(self, request):
+        """Gnmi GET method.
+
+        Args:
+            request (proto.gnmi_pb2.GetRequest): gNMI GetResponse object
+
+        Returns:
+            proto.gnmi_pb2.GetResponse: gNMI GetResponse object
+        """
         return self.service.Get(request, metadata=self.metadata)
 
     def execute(self, cmd):
+        """Helper method for backwards compatibility.
+
+        Args:
+            cmd (proto.gnmi_pb2.GetRequest): gNMI GetResponse object
+
+        Returns:
+            proto.gnmi_pb2.GetResponse: gNMI GetResponse object
+        """
         return self.get(cmd)
 
     def capabilities(self):
+        """Gnmi Capabilities method.
+
+        Returns:
+            proto.gnmi_pb2.CapabilityResponse: gNMI Capabilities object
+        """
         request = proto.gnmi_pb2.CapabilityRequest()
         return self.service.Capabilities(request, metadata=self.metadata)
 
     def subscribe(self, request_iter):
-        return self.service.Subscribe(request_iter,  metadata=self.metadata)
+        """Gnmi Subscribe method.
+
+        Args:
+            request_iter (proto.gnmi_pb2.SubscribeRequest): gNMI SubscribeRequest object
+
+        Returns:
+            proto.gnmi_pb2.SubscribeResponse: gNMI SubscribeResponse object
+        """
+        return self.service.Subscribe(request_iter, metadata=self.metadata)
 
     def disconnect(self):
         """Disconnect from SSH device."""

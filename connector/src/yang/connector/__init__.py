@@ -25,7 +25,7 @@ from . import xpath_util
 
 __all__ = (
     'Netconf',
-    'NetconfEnxr'
+    'NetconfEnxr',
     'Gnmi',
     'GnmiNotification',
     'xpath_util'
