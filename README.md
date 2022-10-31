@@ -8,7 +8,7 @@ This repository homes two distinct but related packages:
 ## Connector
 
 The ``yang.connector`` package features a series of classes that connect to Data Model Interfaces (DMI), 
-in particular, an implementation of NETCONF client. It is designed to be the de-facto NETCONF connection implementation
+in particular, an implementation of NETCONF client and GNMI client
 for Cisco [pyATS](https://developer.cisco.com/site/pyats/).
 
 See [Connector Documentation](/connector/docs/README.rst) for more details.
