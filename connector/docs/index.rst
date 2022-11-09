@@ -6,7 +6,8 @@ Restconf protocols. In this first release, only Netconf is supported. New
 modules will be added in the future.
 
 .. toctree::
-
+   :maxdepth: 2
+   
    README
    apidocs
    changelog/index

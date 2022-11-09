@@ -12,7 +12,7 @@ Introduction
 ============
 
 This module defines a set of classes that connect to Data Model Interfaces
-(DMI), in particular, an implementation of Netconf client. Restconf
+(DMI), in particular, an implementation of Netconf client and GNMI client. Restconf
 implementation is coming soon.
 
 Starting from version 2.0.0, yang.connector.Netconf becomes a wrapper of a
@@ -32,6 +32,7 @@ Features
 
 * NETCONF v1.0 and v1.1 compliant (RFC 6241)
 * NETCONF over SSH (RFC 6242) including Chunked Framing Mechanism
+* `GNMI <https://github.com/openconfig/reference/blob/master/rpc/gnmi/gnmi-specification.md/>`_ v0.8.0 
 * pyATS compliant
 * Support of all high-level APIs of `ncclient <http://ncclient.readthedocs.io/en/latest/>`_
 
@@ -90,10 +91,10 @@ testing gains momentum. Any questions or requests may be sent to
 yang-python@cisco.com.
 
 
-Examples
+NETCONF Examples
 ========
 
-Here are some usage examples of yang.connector. `ncclient document <http://ncclient.readthedocs.io/en/latest/manager.html>`_ is always a good
+Here are some usage examples of NETCONF client. `ncclient document <http://ncclient.readthedocs.io/en/latest/manager.html>`_ is always a good
 starting point. `ncclient source code <https://github.com/ncclient/ncclient/tree/master/ncclient>`_
 might be another great resource of understanding.
 
@@ -427,6 +428,24 @@ Python Code:
     >>> device.nc.connect()
     >>>
 
+GNMI Examples
+========
+Here are some usage examples of GNMI client. For more details see `API Refernce <https://yangconnector.readthedocs.io/en/latest/apidocs.html>`_.
+
+Python Code:
+
+.. code-block:: text
+
+    >>> from pyats.topology import loader
+    >>> from yang.connector.gnmi import Gnmi
+    >>> testbed=loader.load('testbed.static.yaml')
+    >>> device=testbed.devices['uut']
+    >>> device.connect(alias='gnmi', via='yang2')
+
+    >>> resp=device.capabilities()
+    >>> resp.gNMI_version
+    '0.7.0'
+    >>>
 
 Installation
 ============
