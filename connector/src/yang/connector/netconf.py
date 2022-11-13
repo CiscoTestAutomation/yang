@@ -530,9 +530,6 @@ class Netconf(manager.Manager, BaseConnection):
                 self.session.close()
             raise
 
-        # disable info logging for ncclient
-        nccl.setLevel(logging.WARNING)
-
         @atexit.register
         def cleanup():
             if self.session.transport:
@@ -747,10 +744,18 @@ class Netconf(manager.Manager, BaseConnection):
                            'expect an exception when receiving rpc-reply '
                            'due to missing message-id.')
 
+        # disable info logging for ncclient
+        nccl.setLevel(logging.WARNING)
+
         if return_obj:
-            return rpc._request(msg)
+            response = rpc._request(msg)
         else:
-            return rpc._request(msg).xml
+            response = rpc._request(msg).xml
+
+        # enable info logging for ncclient
+        nccl.setLevel(logging.INFO)
+
+        return response
 
     def __getattr__(self, method):
         # avoid the __getattr__ from Manager class
