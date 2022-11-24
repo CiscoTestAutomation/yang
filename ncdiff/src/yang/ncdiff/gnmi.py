@@ -11,7 +11,8 @@ from collections import OrderedDict, defaultdict
 from .errors import ModelError
 from .composer import Tag, Composer
 from .calculator import BaseCalculator
-from cisco_gnmi.proto.gnmi_pb2 import PathElem, Path, SetRequest, TypedValue, Update
+from yang.connector.proto.gnmi_pb2 import PathElem, Path, SetRequest, TypedValue, Update
+
 
 # create a logger for this module
 logger = logging.getLogger(__name__)

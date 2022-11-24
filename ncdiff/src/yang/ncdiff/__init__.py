@@ -4,7 +4,7 @@ payload of a Netconf get-config reply, and a diff is the payload of a
 edit-config message."""
 
 # metadata
-__version__ = '22.10'
+__version__ = '22.11'
 __author__ = 'Jonathan Yang <yuekyang@cisco.com>'
 __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc.'
@@ -22,7 +22,7 @@ from .device import ModelDevice
 from .config import Config, ConfigDelta
 from .composer import Tag
 from .runningconfig import RunningConfigDiff
-from cisco_gnmi.proto import gnmi_pb2, gnmi_pb2_grpc
+from yang.connector.proto import gnmi_pb2, gnmi_pb2_grpc
 
 def _repr_rpcreply(self):
     return '<{}.{} {} at {}>'.format(self.__class__.__module__,

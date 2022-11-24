@@ -12,7 +12,7 @@ from .model import ModelDiff
 from .errors import ConfigError, ModelMissing, ModelIncompatible
 from .netconf import NetconfParser, NetconfCalculator
 from .composer import Composer
-from cisco_gnmi.proto.gnmi_pb2 import SetRequest, GetResponse
+from yang.connector.proto.gnmi_pb2 import SetRequest, GetResponse
 from .restconf import RestconfParser, RestconfCalculator
 from .calculator import BaseCalculator
 
