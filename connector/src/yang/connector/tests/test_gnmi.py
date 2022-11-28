@@ -1,6 +1,6 @@
 import unittest
 
-from cisco_gnmi.client import proto
+from yang.connector import proto
 from yang.connector import xpath_util
 
 
