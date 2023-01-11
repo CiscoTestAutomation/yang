@@ -25,6 +25,9 @@ except ImportError:
     class BaseConnection:
         pass
 
+from .settings import Settings
+
+
 # create a logger for this module
 logger = logging.getLogger(__name__)
 
@@ -68,34 +71,45 @@ class NetconfFormatter(logging.Formatter):
     """
         For formatting NETCONF XML messages
     """
-
     def __init__(self, fmt=LOG_FORMAT, date_fmt=DATE_FORMAT):
         super().__init__(fmt=fmt,
                          datefmt=date_fmt)
+
+        self.FORMAT_XML = True
 
     def format(self, record):
         msg = record.msg
         if isinstance(msg, operations.rpc.RPCReply):
             msg = msg.xml
-        record.msg = format_xml(msg)
+        if self.FORMAT_XML:
+            record.msg = format_xml(msg)
         return super().format(record)
 
 
 class NetconfScreenFormatter(NetconfFormatter):
     """
-        For limiting the output for formatted messages to max 40 lines
+        For limiting the output for formatted messages, max 40 lines by default
     """
-    MAX_LINES = 40
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.MAX_LINES = 40
+        self.FORMAT_XML = True
 
     def format(self, record):
         msg = super().format(record)
         lines = msg.splitlines()
-        msg_len = len(lines)
-        if msg_len > self.MAX_LINES:
-            return '\n'.join(lines[0:20] + [f'\n\n... skipping {msg_len-40} lines ...\n\n'] + lines[-20:])
+        if self.MAX_LINES:
+            msg_len = len(lines)
+            if msg_len > self.MAX_LINES:
+                half_lines = int(self.MAX_LINES/2)
+                return '\n'.join(lines[0:half_lines] + \
+                                 [f'\n\n... skipping {msg_len-self.MAX_LINES} lines ...\n\n'] + \
+                                 lines[-half_lines:])
+            else:
+                return '\n'.join(lines)
         else:
-            return '\n'.join(lines)
-
+            return msg
 
 
 class pyATS_TaskLog_Adapter(logging.StreamHandler):
@@ -107,8 +121,6 @@ class pyATS_TaskLog_Adapter(logging.StreamHandler):
             self._pyats_handlers = managed_handlers
         except Exception:
             raise Exception('Cannot use pyATS log adapter when pyATS is not importable')
-
-        self.setFormatter(NetconfScreenFormatter(fmt=TaskLogFormatter.MESSAGE_FORMAT))
 
     @property
     def stream(self):
@@ -232,6 +244,7 @@ class Netconf(manager.Manager, BaseConnection):
     '''
 
     def __init__(self, *args, **kwargs):
+
         '''
         __init__ instantiates a single connection instance.
         '''
@@ -251,6 +264,9 @@ class Netconf(manager.Manager, BaseConnection):
         BaseConnection.__init__(self, *args, **kwargs)
         if 'timeout' in self.connection_info:
             self.timeout = self.connection_info['timeout']
+
+        # connection_info is set by BaseConnection class
+        self.settings = self.connection_info.pop('settings', Settings())
 
         # shortwire Ncclient device handling portion
         # and create just the DeviceHandler
@@ -329,12 +345,17 @@ class Netconf(manager.Manager, BaseConnection):
 
         if self.log_stdout:
             hdlr = logging.StreamHandler()
+            screen_formatter = NetconfScreenFormatter(fmt=LOG_FORMAT)
+            screen_formatter.MAX_LINES = self.settings.get('NETCONF_SCREEN_LOGGING_MAX_LINES', 40)
+            screen_formatter.FORMAT_XML = self.settings.get('NETCONF_LOGGING_FORMAT_XML', True)
+            hdlr.setFormatter(screen_formatter)
             self.log.addHandler(hdlr)
-            hdlr.setFormatter(NetconfScreenFormatter(fmt=LOG_FORMAT))
 
         if self.logfile:
             fh = logging.FileHandler(self.logfile)
-            fh.setFormatter(NetconfFormatter(fmt=LOG_FORMAT))
+            file_formatter = NetconfFormatter(fmt=LOG_FORMAT)
+            file_formatter.FORMAT_XML = self.settings.get('NETCONF_LOGGING_FORMAT_XML', True)
+            fh.setFormatter(file_formatter)
             self.log.addHandler(fh)
             logger.info('+++ %s netconf logfile %s +++' % (hostname, self.logfile))
 
@@ -346,9 +367,13 @@ class Netconf(manager.Manager, BaseConnection):
             pass
         else:
             # we're in pyATS, use pyATS loggers
-            # ignore self.logfile
             if not self.no_pyats_tasklog:
-                self.log.addHandler(pyATS_TaskLog_Adapter())
+                pta = pyATS_TaskLog_Adapter()
+                nsf = NetconfScreenFormatter(fmt=TaskLogFormatter.MESSAGE_FORMAT)
+                nsf.MAX_LINES = self.settings.get('NETCONF_SCREEN_LOGGING_MAX_LINES', 40)
+                nsf.FORMAT_XML = self.settings.get('NETCONF_LOGGING_FORMAT_XML', True)
+                pta.setFormatter(nsf)
+                self.log.addHandler(pta)
 
         # if debug_mode is True, enable debug mode
         if self.debug:
