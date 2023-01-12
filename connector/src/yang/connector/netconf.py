@@ -1,6 +1,7 @@
 """netconf.py module is a wrapper around the ncclient package."""
 
 import re
+import time
 import atexit
 import logging
 import subprocess
@@ -19,9 +20,13 @@ try:
     from pyats.connections import BaseConnection
     from pyats.utils.secret_strings import to_plaintext
     from pyats.log.utils import banner
+    from pyats.log import TaskLogFormatter
 except ImportError:
     class BaseConnection:
         pass
+
+from .settings import Settings
+
 
 # create a logger for this module
 logger = logging.getLogger(__name__)
@@ -29,6 +34,97 @@ logger = logging.getLogger(__name__)
 nccl = logging.getLogger("ncclient")
 # The 'Sending' messages are logged at level INFO.
 # The 'Received' messages are logged at level DEBUG.
+
+LOG_FORMAT = '%(asctime)s: %%NETCONF-%(levelname)s: %(message)s'
+DATE_FORMAT = '%Y-%m-%dT%H:%M:%S'
+
+
+def format_xml(msg):
+    parser = et.XMLParser(recover=True, remove_blank_text=True)
+
+    if isinstance(msg, str):
+        msg = msg.encode("utf-8")
+
+    msg = msg.strip()
+
+    start = msg.find(b"<")
+    end = msg.rfind(b"]]>]]>")   # NETCONF 1.0 terminator
+
+    if end == -1:
+        end = msg.rfind(b">")
+        if end != -1:
+            # Include the '>' character in our range
+            end += 1
+
+    if start != -1 and end != -1:
+        try:
+            elem = et.fromstring(msg[start:end], parser)
+            text = et.tostring(elem, pretty_print=True,
+                               encoding="utf-8")
+            msg = (msg[:start] + text + msg[end:])
+        except Exception as err:
+            logger.exception(err)
+
+    return msg.decode()
+
+class NetconfFormatter(logging.Formatter):
+    """
+        For formatting NETCONF XML messages
+    """
+    def __init__(self, fmt=LOG_FORMAT, date_fmt=DATE_FORMAT):
+        super().__init__(fmt=fmt,
+                         datefmt=date_fmt)
+
+        self.FORMAT_XML = True
+
+    def format(self, record):
+        msg = record.msg
+        if isinstance(msg, operations.rpc.RPCReply):
+            msg = msg.xml
+        if self.FORMAT_XML:
+            record.msg = format_xml(msg)
+        return super().format(record)
+
+
+class NetconfScreenFormatter(NetconfFormatter):
+    """
+        For limiting the output for formatted messages, max 40 lines by default
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.MAX_LINES = 40
+        self.FORMAT_XML = True
+
+    def format(self, record):
+        msg = super().format(record)
+        lines = msg.splitlines()
+        if self.MAX_LINES:
+            msg_len = len(lines)
+            if msg_len > self.MAX_LINES:
+                half_lines = int(self.MAX_LINES/2)
+                return '\n'.join(lines[0:half_lines] + \
+                                 [f'\n\n... skipping {msg_len-self.MAX_LINES} lines ...\n\n'] + \
+                                 lines[-half_lines:])
+            else:
+                return '\n'.join(lines)
+        else:
+            return msg
+
+
+class pyATS_TaskLog_Adapter(logging.StreamHandler):
+
+    def __init__(self):
+        logging.Handler.__init__(self)
+        try:
+            from pyats.log import managed_handlers
+            self._pyats_handlers = managed_handlers
+        except Exception:
+            raise Exception('Cannot use pyATS log adapter when pyATS is not importable')
+
+    @property
+    def stream(self):
+        return self._pyats_handlers.tasklog.stream
 
 
 class NetconfSessionLogHandler(logging.Handler):
@@ -43,34 +139,14 @@ class NetconfSessionLogHandler(logging.Handler):
                 record.args = list(record.args)
 
                 for i in range(len(record.args)):
-                    try:
-                        arg = None
-                        if isinstance(record.args[i], str):
-                            arg = record.args[i].encode("utf-8")
-                        elif isinstance(record.args[i], bytes):
-                            arg = record.args[i]
-                        if not arg:
-                            continue
-                        start = arg.find(b"<")
-                        end = arg.rfind(b"]]>]]>")   # NETCONF 1.0 terminator
-                        if end == -1:
-                            end = arg.rfind(b">")
-                            if end != -1:
-                                # Include the '>' character in our range
-                                end += 1
-                        if start != -1 and end != -1:
-                            elem = et.fromstring(arg[start:end], self.parser)
-                            if elem is None:
-                                continue
-
-                            text = et.tostring(elem, pretty_print=True,
-                                               encoding="utf-8")
-                            record.args[i] = (arg[:start] +
-                                              text +
-                                              arg[end:]).decode()
-                    except Exception:
-                        # Pretty print issue so leave record unchanged
+                    arg = None
+                    if isinstance(record.args[i], str):
+                        arg = record.args[i].encode("utf-8")
+                    elif isinstance(record.args[i], bytes):
+                        arg = record.args[i]
+                    if not arg:
                         continue
+                    record.args[i] = format_xml(arg)
 
                 record.args = tuple(record.args)
             except Exception:
@@ -168,17 +244,29 @@ class Netconf(manager.Manager, BaseConnection):
     '''
 
     def __init__(self, *args, **kwargs):
+
         '''
         __init__ instantiates a single connection instance.
         '''
         # set default timeout
         kwargs.setdefault('timeout', 30)
 
+        self.alias = kwargs.get('alias')
+        self.debug = kwargs.get('debug', False)
+        self.logfile = kwargs.get('logfile')
+        self.logdir = kwargs.get('logdir', '/tmp')
+        self.log_propagate = kwargs.get('log_propagate', False)
+        self.log_stdout = kwargs.get('log_stdout', True)
+        self.no_pyats_tasklog = kwargs.get('no_pyats_tasklog', False)
+
         # instanciate BaseConnection
         # (could use super...)
         BaseConnection.__init__(self, *args, **kwargs)
         if 'timeout' in self.connection_info:
             self.timeout = self.connection_info['timeout']
+
+        # connection_info is set by BaseConnection class
+        self.settings = self.connection_info.pop('settings', Settings())
 
         # shortwire Ncclient device handling portion
         # and create just the DeviceHandler
@@ -213,6 +301,83 @@ class Netconf(manager.Manager, BaseConnection):
         '''
 
         return self._session
+
+    def configure_logging(self):
+
+        # use device name or connection id
+        hostname = self.device.name if hasattr(self, 'device') else id(self)
+
+        if self.alias:
+            logger_name = '%s.%s.%s' % (hostname,
+                                        self.alias,
+                                        int(time.time()))
+        else:
+            logger_name = '%s.%s' % (hostname, int(time.time()))
+
+        self.log = logging.getLogger('netconf.%s' % logger_name)
+
+        # workaround for double invocation that somehow happens in robot
+        self.log.handlers.clear()
+        self.log.filters.clear()
+
+        # default log level
+        self.log.setLevel(logging.INFO)
+        # don't... propagate
+        self.log.propagate = self.log_propagate
+
+        # add logfile
+        if self.logfile is None:
+            try:
+                from pyats.easypy import runtime
+                if runtime.job is not None:
+                    self.logdir = runtime.directory
+            except Exception:
+                pass
+
+            ts = datetime.datetime.now().strftime('%Y%m%dT%H%M%S.%f')[:-3].replace('.', '')
+            def convert(string):
+                return re.sub(r'[^\w\s-]', '_', string)
+            sanitized_hostname = convert(hostname)
+            if self.alias:
+                self.logfile = f'{self.logdir}/{sanitized_hostname}-{self.alias}-{ts}.log'
+            else:
+                self.logfile = f'{self.logdir}/{sanitized_hostname}-{ts}.log'
+
+        if self.log_stdout:
+            hdlr = logging.StreamHandler()
+            screen_formatter = NetconfScreenFormatter(fmt=LOG_FORMAT)
+            screen_formatter.MAX_LINES = self.settings.get('NETCONF_SCREEN_LOGGING_MAX_LINES', 40)
+            screen_formatter.FORMAT_XML = self.settings.get('NETCONF_LOGGING_FORMAT_XML', True)
+            hdlr.setFormatter(screen_formatter)
+            self.log.addHandler(hdlr)
+
+        if self.logfile:
+            fh = logging.FileHandler(self.logfile)
+            file_formatter = NetconfFormatter(fmt=LOG_FORMAT)
+            file_formatter.FORMAT_XML = self.settings.get('NETCONF_LOGGING_FORMAT_XML', True)
+            fh.setFormatter(file_formatter)
+            self.log.addHandler(fh)
+            logger.info('+++ %s netconf logfile %s +++' % (hostname, self.logfile))
+
+        # are we in pyATS?
+        try:
+            from pyats.log import managed_handlers  # noqa
+        except Exception:
+            # we're not, let go
+            pass
+        else:
+            # we're in pyATS, use pyATS loggers
+            if not self.no_pyats_tasklog:
+                pta = pyATS_TaskLog_Adapter()
+                nsf = NetconfScreenFormatter(fmt=TaskLogFormatter.MESSAGE_FORMAT)
+                nsf.MAX_LINES = self.settings.get('NETCONF_SCREEN_LOGGING_MAX_LINES', 40)
+                nsf.FORMAT_XML = self.settings.get('NETCONF_LOGGING_FORMAT_XML', True)
+                pta.setFormatter(nsf)
+                self.log.addHandler(pta)
+
+        # if debug_mode is True, enable debug mode
+        if self.debug:
+            self.log.setLevel(logging.DEBUG)
 
     def connect(self):
         '''connect
@@ -320,7 +485,8 @@ class Netconf(manager.Manager, BaseConnection):
         if self.connected:
             return
 
-        logger.debug(self.session)
+        self.configure_logging()
+
         if not self.session.is_alive():
             self._session = transport.SSHSession(self._device_handler)
 
@@ -383,7 +549,7 @@ class Netconf(manager.Manager, BaseConnection):
 
         try:
             self.session.connect(**defaults)
-            logger.info('NETCONF CONNECTED')
+            self.log.info('NETCONF CONNECTED')
         except Exception:
             if self.session.transport:
                 self.session.close()
@@ -420,11 +586,11 @@ class Netconf(manager.Manager, BaseConnection):
                 del self.active_notifications[self]
                 return
             notifier.event_triggered = True
-            logger.info(banner('NOTIFICATION EVENT TRIGGERED'))
+            self.log.info(banner('NOTIFICATION EVENT TRIGGERED'))
             wait_for_sample = notifier.sample_interval - 1
             cntr = 1.0
             while cntr < float(notifier.stream_max):
-                logger.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(
+                self.log.info('Listening for notifications from subscribe stream, {} seconds elapsed'.format(
                     cntr)
                 )
                 cntr += 1
@@ -588,24 +754,33 @@ class Netconf(manager.Manager, BaseConnection):
         rpc = RawRPC(session=self.session,
                      device_handler=self._device_handler,
                      timeout=timeout,
-                     raise_mode=operations.rpc.RaiseMode.NONE)
+                     raise_mode=operations.rpc.RaiseMode.NONE,
+                     log=self.log)
 
         # identify message-id
         m = re.search(r'message-id="([A-Za-z0-9_\-:# ]*)"', msg)
         if m:
             rpc._id = m.group(1)
             rpc._listener.register(rpc._id, rpc)
-            logger.debug(
+            self.log.debug(
                 'Found message-id="%s" in your rpc, which is good.', rpc._id)
         else:
-            logger.warning('Cannot find message-id in your rpc. You may '
+            self.log.warning('Cannot find message-id in your rpc. You may '
                            'expect an exception when receiving rpc-reply '
                            'due to missing message-id.')
 
+        # disable info logging for ncclient
+        nccl.setLevel(logging.WARNING)
+
         if return_obj:
-            return rpc._request(msg)
+            response = rpc._request(msg)
         else:
-            return rpc._request(msg).xml
+            response = rpc._request(msg).xml
+
+        # enable info logging for ncclient
+        nccl.setLevel(logging.INFO)
+
+        return response
 
     def __getattr__(self, method):
         # avoid the __getattr__ from Manager class
@@ -857,6 +1032,10 @@ class RawRPC(operations.rpc.RPC):
     only.
     '''
 
+    def __init__(self, *args, **kwargs):
+        self.log = kwargs.pop('log', logging.getLogger(__name__))
+        super().__init__(*args, **kwargs)
+
     def _request(self, msg):
         '''_request
 
@@ -868,24 +1047,24 @@ class RawRPC(operations.rpc.RPC):
         rpc request, ncclient will raise an OperationError.
         '''
 
-        logger.debug('Requesting %r' % self.__class__.__name__)
-        logger.info('Sending rpc...')
-        logger.info(msg)
+        self.log.debug('Requesting %r' % self.__class__.__name__)
+        self.log.info('Sending rpc...')
+        self.log.info(msg)
         time1 = datetime.datetime.now()
         self._session.send(msg)
         if not self._async:
-            logger.debug('Sync request, will wait for timeout=%r' %
+            self.log.debug('Sync request, will wait for timeout=%r' %
                          self._timeout)
             self._event.wait(self._timeout)
             if self._event.isSet():
                 time2 = datetime.datetime.now()
                 self._reply.elapsed = time2 - time1
-                logger.info('Receiving rpc-reply after {:.3f} sec...'.
+                self.log.info('Receiving rpc-reply after {:.3f} sec...'.
                             format(self._reply.elapsed.total_seconds()))
-                logger.info(self._reply)
+                self.log.info(self._reply)
                 return self._reply
             else:
-                logger.info('Timeout. No rpc-reply received.')
+                self.log.info('Timeout. No rpc-reply received.')
                 raise TimeoutExpiredError('ncclient timed out while waiting '
                                           'for an rpc-reply.')
 

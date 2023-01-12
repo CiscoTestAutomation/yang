@@ -92,7 +92,7 @@ yang-python@cisco.com.
 
 
 NETCONF Examples
-========
+================
 
 Here are some usage examples of NETCONF client. `ncclient document <http://ncclient.readthedocs.io/en/latest/manager.html>`_ is always a good
 starting point. `ncclient source code <https://github.com/ncclient/ncclient/tree/master/ncclient>`_
@@ -105,7 +105,7 @@ Connect to Netconf interface.
 
 Topology YAML Example:
 
-.. code-block:: text
+.. code-block:: yaml
 
     devices:
         asr22:
@@ -141,13 +141,41 @@ Topology YAML Example:
 
 Python Code:
 
-.. code-block:: text
+.. code-block:: python
 
     >>> from pyats.topology import loader
     >>> testbed = loader.load('/users/xxx/xxx/asr22.yaml')
     >>> device = testbed.devices['asr21']
     >>> device.connect(alias='nc', via='netconf')
     >>>
+
+**Settings**
+
+The following settings are supported for netconf connections:
+
+    * NETCONF_SCREEN_LOGGING_MAX_LINES: (int) Max number of lines to log to the
+      screen. Logs up to 40 lines by default. The device log file will contain
+      all the log lines. Set to 0 to disable.
+    * NETCONF_LOGGING_FORMAT_XML: (bool) Format XML or leave as-is. Enabled by
+      default, set to False to disable.
+
+You can update the settings via the settings attribute or via the testbed yaml file.
+
+.. code-block:: python
+
+    >>> device.nc.settings.NETCONF_SCREEN_LOGGING_MAX_LINES = 40
+    >>> device.nc.settings.NETCONF_LOGGING_FORMAT_XML = True
+
+.. code-block:: yaml
+
+    devices:
+        asr22:
+            connections:
+                netconf:
+                    settings:
+                        NETCONF_LOGGING_FORMAT_XML: True
+                        NETCONF_SCREEN_LOGGING_MAX_LINES: 100
+
 
 connected
 ---------

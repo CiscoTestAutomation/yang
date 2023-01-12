@@ -84,7 +84,7 @@ class MySSHSession2():
 class MyRawRPC():
 
     def __init__(self, session=None, device_handler=None,
-                       timeout=None, raise_mode=None):
+                       timeout=None, raise_mode=None, **kwarg):
         self._event = MyEvent()
         self._listener = MyRPCReplyListener()
 
