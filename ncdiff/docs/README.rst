@@ -75,7 +75,7 @@ Support Mailers
 ===============
 Users are encouraged to contribute to yang.ncdiff module as expertise of data
 model testing grows in Cisco. Any questions or requests may be sent to
-yang-python@cisco.com.
+pyats-support-ext@cisco.com.
 
 
 Usage Examples
