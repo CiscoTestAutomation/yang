@@ -1,5 +1,9 @@
+try:
+    from pyats.datastructures import AttrDict
+except ImportError:
+    class AttrDict:
+        pass
 
-from pyats.datastructures import AttrDict
 
 class Settings(AttrDict):
 
