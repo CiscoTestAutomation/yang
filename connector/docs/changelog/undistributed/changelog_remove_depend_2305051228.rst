@@ -3,4 +3,4 @@
 --------------------------------------------------------------------------------
 * connector
     * Removed dependency of installing pyats to use connector classes.
-        * Try/except in settings.py around AttrDict.
+        * Settings class in settings.py now subclasses dict instead of AttrDict.
