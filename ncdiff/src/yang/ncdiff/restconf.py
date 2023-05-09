@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 
 nc_url = xml_.BASE_NS_1_0
 config_tag = '{' + nc_url + '}config'
-header_json = {'Content-type': 'application/yang-data+json',
-               'Accept': 'application/yang-data+json, application/yang-data.errors+json'}
+header_json = {
+    'Content-type': 'application/yang-data+json',
+    'Accept': 'application/yang-data+json, application/yang-data.errors+json',
+}
 
 
 def _tostring(value):
@@ -36,6 +38,7 @@ def _tostring(value):
         return None
     else:
         return str(value)
+
 
 def _fromstring(value):
     '''_fromstring
@@ -72,8 +75,8 @@ class RestconfParser(object):
         An lxml Element object which is the root of the config tree.
 
     config_node : `Element`
-        An Element node in the config tree, which is corresponding to the URL in
-        the Restconf GET reply.
+        An Element node in the config tree, which is corresponding to the URL
+        in the Restconf GET reply.
 
     xpath : `str`
         An xpath of attribute 'config_node', which is corresponding to the URL
@@ -105,7 +108,8 @@ class RestconfParser(object):
     @property
     def config_node(self):
         if self._config_node is None:
-            self._config_node_parent, self._config_node = self.get_config_node()
+            self._config_node_parent, self._config_node = \
+                self.get_config_node()
         return self._config_node
 
     @property
@@ -133,7 +137,8 @@ class RestconfParser(object):
     @property
     def config_node_parent(self):
         if self._config_node_parent is None:
-            self._config_node_parent, self._config_node = self.get_config_node()
+            self._config_node_parent, self._config_node = \
+                self.get_config_node()
         return self._config_node_parent
 
     @staticmethod
@@ -164,7 +169,8 @@ class RestconfParser(object):
         def find_node(node1, node2):
             if node1 == node:
                 return node2
-            for child1, child2 in zip(node1.getchildren(), node2.getchildren()):
+            for child1, child2 in zip(node1.getchildren(),
+                                      node2.getchildren()):
                 if child1 == node:
                     return child2
                 elif child1.getchildren():
@@ -279,8 +285,8 @@ class RestconfComposer(Composer):
         ----------
 
         instance : `bool`
-            True if only one instance of list or leaf-list is required. False if
-            all instances of list or leaf-list are needed.
+            True if only one instance of list or leaf-list is required. False
+            if all instances of list or leaf-list are needed.
 
         Returns
         -------
@@ -295,7 +301,7 @@ class RestconfComposer(Composer):
             nodes = [node] + node.findall('.//')
             for item in nodes:
                 parents = [p for p in node.findall('.//{}/..'.format(item.tag))
-                          if item in p.findall('*')]
+                           if item in p.findall('*')]
                 if parents and id(parents[0]) in default_ns:
                     default_url = default_ns[id(parents[0])]
                     ns, tag = self.device.convert_tag(default_url, item.tag,
@@ -320,10 +326,11 @@ class RestconfComposer(Composer):
             return xml_node
 
         if instance:
-            return json.dumps(get_json_instance(convert_node(self.node, 
-                                                             child_tag=child_tag)))
+            return json.dumps(get_json_instance(
+                convert_node(self.node, child_tag=child_tag)
+            ))
         else:
-            nodes = [n for n in self.node.getparent() \
+            nodes = [n for n in self.node.getparent()
                                          .iterchildren(tag=self.node.tag)]
             if len(nodes) > 1:
                 return json.dumps([get_json_instance(convert_node(n))
@@ -372,7 +379,7 @@ class RestconfComposer(Composer):
             return ret
 
         nodes = list(reversed(list(self.node.iterancestors())))[1:] + \
-                [self.node]
+            [self.node]
         return '/restconf/data' + convert('', nodes)
 
 
@@ -439,6 +446,7 @@ class RestconfCalculator(BaseCalculator):
         deletes = []
         puts = []
         patches = []
+        cache_list_seq_is_inclusive = {}
 
         # if a leaf-list node, delete the leaf-list totally
         # if a list node, by default delete the list instance
@@ -447,7 +455,8 @@ class RestconfCalculator(BaseCalculator):
             composer = RestconfComposer(self.device, node)
             url = 'https://{}:{}'.format(self.ip, self.port)
             url += composer.get_url(instance=instance)
-            deletes.append(requests.Request('DELETE', url, headers=header_json))
+            deletes.append(
+                requests.Request('DELETE', url, headers=header_json))
 
         # if a leaf-list node, replace the leaf-list totally
         # if a list node, replace the list totally
@@ -456,8 +465,10 @@ class RestconfCalculator(BaseCalculator):
             url = 'https://{}:{}'.format(self.ip, self.port)
             url += composer.get_url(instance=instance)
             data_json = composer.get_json(instance=instance)
-            puts.append(requests.Request('PUT', url, headers=header_json,
-                                         data=data_json))
+            put_request = requests.Request(
+                'PUT', url, headers=header_json, data=data_json)
+            puts.append(put_request)
+            return put_request
 
         # if a leaf-list node, update the leaf-list totally
         # if a list node, by default update the list instance
@@ -466,9 +477,10 @@ class RestconfCalculator(BaseCalculator):
             composer = RestconfComposer(self.device, node.getparent())
             url = 'https://{}:{}'.format(self.ip, self.port)
             url += composer.get_url(instance=instance)
-            data_json = composer.get_json(instance=instance, child_tag=node.tag)
-            patches.append(requests.Request('PATCH', url, headers=header_json,
-                                            data=data_json))
+            data_json = composer.get_json(
+                instance=instance, child_tag=node.tag)
+            patches.append(requests.Request(
+                'PATCH', url, headers=header_json, data=data_json))
 
         # the sequence of list instances under node_self is different from the
         # one under node_other
@@ -482,18 +494,23 @@ class RestconfCalculator(BaseCalculator):
                 return True
 
         # all list instances under node_self have peers under node_other, and
-        # the sequence of list instances under node_self that have peers under
-        # node_other is same as the sequence of list instances under node_other
+        # the sequence of list instances under node_other that have peers under
+        # node_self is same as the sequence of list instances under node_self
         def list_seq_is_inclusive(tag):
+            if tag in cache_list_seq_is_inclusive:
+                return cache_list_seq_is_inclusive[tag]
             s_list = [i for i in node_self.iterchildren(tag=tag)]
             o_list = [i for i in node_other.iterchildren(tag=tag)]
             s_seq = [self.device.get_xpath(n) for n in s_list]
             o_seq = [self.device.get_xpath(n) for n in o_list]
-            if set(s_seq) <= set(o_seq) and \
-               [i for i in s_seq if i in o_seq] == o_seq:
-                return True
+            if (
+                set(s_seq) <= set(o_seq) and
+                [i for i in o_seq if i in s_seq] == s_seq
+            ):
+                cache_list_seq_is_inclusive[tag] = True
             else:
-                return False
+                cache_list_seq_is_inclusive[tag] = False
+            return cache_list_seq_is_inclusive[tag]
 
         in_s_not_in_o, in_o_not_in_s, in_s_and_in_o = \
             self._group_kids(node_self, node_other)
@@ -502,8 +519,10 @@ class RestconfCalculator(BaseCalculator):
             if schema_node.get('type') == 'leaf' or \
                schema_node.get('type') == 'container':
                 generate_patch(child_s)
-            elif schema_node.get('type') == 'leaf-list' or \
-                 schema_node.get('type') == 'list':
+            elif (
+                schema_node.get('type') == 'leaf-list' or
+                schema_node.get('type') == 'list'
+            ):
                 if schema_node.get('ordered-by') == 'user':
                     return ([], [generate_put(node_self, instance=True)], [])
                 else:
@@ -513,8 +532,10 @@ class RestconfCalculator(BaseCalculator):
             if schema_node.get('type') == 'leaf' or \
                schema_node.get('type') == 'container':
                 generate_delete(child_o)
-            elif schema_node.get('type') == 'leaf-list' or \
-                 schema_node.get('type') == 'list':
+            elif (
+                schema_node.get('type') == 'leaf-list' or
+                schema_node.get('type') == 'list'
+            ):
                 if schema_node.get('ordered-by') == 'user':
                     if list_seq_is_inclusive(child_o.tag):
                         generate_delete(child_o, instance=True)
