@@ -960,6 +960,23 @@ class NetconfEnxr():
         unlock_element.append(target_element)
         return self.send_cmd(self.get_rpc(unlock_element))
 
+    class LockContext:
+        def __init__(self, target, cls):
+            self.cls = cls
+            self.target = target
+
+        def __enter__(self):
+            self.cls.lock(self.target)
+            return self
+
+        def __exit__(self, *args):
+            self.cls.unlock(self.target)
+            return False
+
+    def locked(self, target):
+        '''Return a lock context manager for EnXR'''
+        return self.LockContext(target, self)
+
     def dispatch(self, rpc_command=None, **kwargs):
         rpc = rpc_command
         return self.send_cmd(rpc)
