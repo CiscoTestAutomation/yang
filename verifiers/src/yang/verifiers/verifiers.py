@@ -1,12 +1,18 @@
 from logging import Logger
 from typing import Any, List
-from genie.libs.sdk.triggers.blitz.rpcverify import BaseVerifier, DefaultVerifier, OptFields
-from genie.libs.sdk.triggers.blitz.gnmi_util import GnmiMessage
 from dataclasses import field, dataclass
 from google.protobuf import json_format
 
+try:
+    from genie.libs.sdk.triggers.blitz.verifiers import DefaultVerifier
+except ImportError:
+    from yang.verifiers.base_verifier import BaseVerifier as DefaultVerifier
+
+# TODO Add possibility to run withouth genie
+
 
 class CountVerifier(DefaultVerifier):
+    from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
     @dataclass
     class MyCustomReturns(OptFields):
@@ -32,6 +38,7 @@ class CountVerifier(DefaultVerifier):
         super().__init__(device, returns, log, **kwargs)
 
     def subscribe_decoder(self, response, namespace: dict = None) -> List[dict]:
+        from genie.libs.sdk.triggers.blitz.gnmi_util import GnmiMessage
         notification = json_format.MessageToDict(response)
         updates = notification['update']['update']
         data = []
