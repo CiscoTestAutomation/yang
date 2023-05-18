@@ -62,35 +62,50 @@ Then we will implement two methods responsible for verifing subscribe mode in GN
                 return False
         return True
 
+Custom returns arguments
+========================
+
 The last step is to handle custom variables that can be passed to `returns` object.
-We can do this by inheriting from `OptFields` class and adding new fields to it and overriding
+We can do this by inheriting from `OptFields` class or creating own class and adding new fields to it and overriding
 `returns` property like in example below. The `returns` object contains all values passed in returns 
-section of the trigger file.
+section of the trigger file. In our example we will create a 3 new fields `cli_return`, `count` and `found_items`.
 
 .. code-block:: python
 
     from dataclasses import field, dataclass
 
-    @dataclass
-    class MyCustomReturns(OptFields):
-        '''
-        Create a custom returns class to be used by the verifier
-        by adding new fields to the default returns dataclass.
-        '''
-        cli_return: dict = field(default_factory=dict)
-        count: int = 0
-        found_items: int = 0
+    class CountVerifier(DefaultVerifier):
+        @dataclass
+        class MyCustomReturns:
+            '''
+            Create a custom returns class to be used by the verifier
+            by adding new fields to the default returns dataclass.
+            '''
+            cli_return: dict = field(default_factory=dict)
+            count: int = 0
+            found_items: int = 0
+            xpath: str = ''
 
-    @property
-    def returns(self) -> List[MyCustomReturns]:
-        return self._returns
+        @property
+        def returns(self) -> List[MyCustomReturns]:
+            return self._returns
 
-    @returns.setter
-    def returns(self, value: List[dict]) -> List[MyCustomReturns]:
-        '''
-        Register our custom returns class
-        '''
-        self._returns = [self.MyCustomReturns(**r) for r in value]
+        @returns.setter
+        def returns(self, value: List[dict]) -> List[MyCustomReturns]:
+            '''
+            Register our custom returns class
+            '''
+            self._returns = [self.MyCustomReturns(**r) for r in value]
+
+By doing this you can now pass, your custom arguments to retruns section like this:
+
+.. code-block:: yaml
+
+    returns:
+    - count: 2
+      xpath: network-instances/network-instance/protocols/protocol/static-routes/static
+      cli_return: "data"
+
 
 Now let's put it all together.
 
