@@ -1,14 +1,12 @@
-from logging import Logger
-from typing import Any, List
+from typing import List
 from dataclasses import field, dataclass
 from google.protobuf import json_format
 
+# Import base classes. For non pyats installation you can use class provided within this module
 try:
     from genie.libs.sdk.triggers.blitz.verifiers import DefaultVerifier
 except ImportError:
     from yang.verifiers.base_verifier import BaseVerifier as DefaultVerifier
-
-# TODO Add possibility to run withouth genie
 
 
 class CountVerifier(DefaultVerifier):
@@ -22,6 +20,7 @@ class CountVerifier(DefaultVerifier):
         '''
         cli_return: dict = field(default_factory=dict)
         count: int = 0
+        found_items: int = 0
 
     @property
     def returns(self) -> List[MyCustomReturns]:
@@ -34,10 +33,7 @@ class CountVerifier(DefaultVerifier):
         '''
         self._returns = [self.MyCustomReturns(**r) for r in value]
 
-    def __init__(self, device: Any, returns: dict, log: Logger, **kwargs):
-        super().__init__(device, returns, log, **kwargs)
-
-    def subscribe_decoder(self, response, namespace: dict = None) -> List[dict]:
+    def gnmi_decoder(self, response, namespace: dict = None, method: str = 'subscribe') -> List[dict]:
         from genie.libs.sdk.triggers.blitz.gnmi_util import GnmiMessage
         notification = json_format.MessageToDict(response)
         updates = notification['update']['update']
@@ -54,12 +50,12 @@ class CountVerifier(DefaultVerifier):
         for response in decoded_response:
             for ret in self.returns:
                 if ret.xpath == response['xpath']:
-                    ret.count += len(response['value'])
+                    ret.found_items += len(response['value'])
 
     def end_subscription(self, errors):
         if errors:
             return False
         for ret in self.returns:
-            if ret.count != ret.value:
+            if ret.count != ret.found_items or ret.found_items < self.kwargs['min_count']:
                 return False
         return True
