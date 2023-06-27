@@ -264,11 +264,10 @@ class Gnmi(BaseConnection):
                 raise KeyError('No credentials found for gNMI testbed')
         password = to_plaintext(password)
 
+        host = dev_args.get('host') or dev_args.get('ip')
         port = str(dev_args.get('port'))
-        target = '{0}:{1}'.format(
-            dev_args.get('host'),
-            port
-        )
+        target = '{0}:{1}'.format(host, port)
+
         options = [('grpc.max_receive_message_length', 1000000000)]
         # Gather certificate settings
         root = dev_args.get('root_certificate')
