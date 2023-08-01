@@ -4,12 +4,12 @@ from google.protobuf import json_format
 
 # Import base classes. For non pyats installation you can use class provided within this module
 try:
-    from genie.libs.sdk.triggers.blitz.verifiers import DefaultVerifier
+    from genie.libs.sdk.triggers.blitz.verifiers import GnmiDefaultVerifier
 except ImportError:
-    from yang.verifiers.base_verifier import BaseVerifier as DefaultVerifier
+    from yang.verifiers.base_verifier import BaseVerifier as GnmiDefaultVerifier
 
 
-class CountVerifier(DefaultVerifier):
+class CountVerifier(GnmiDefaultVerifier):
     from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
     @dataclass
@@ -33,7 +33,7 @@ class CountVerifier(DefaultVerifier):
         '''
         self._returns = [self.MyCustomReturns(**r) for r in value]
 
-    def gnmi_decoder(self, response, namespace: dict = None, method: str = 'subscribe') -> List[dict]:
+    def decode(self, response, namespace: dict = None, method: str = 'get') -> List[dict]:
         from genie.libs.sdk.triggers.blitz.gnmi_util import GnmiMessage
         notification = json_format.MessageToDict(response)
         updates = notification['update']['update']
@@ -46,7 +46,12 @@ class CountVerifier(DefaultVerifier):
             data.append({'xpath': xpath, 'value': decoded_val})
         return data
 
-    def subscribe_verify(self, decoded_response: dict, sub_type: str = 'ONCE'):
+    def subscribe_verify(self,
+                         raw_response: any,
+                         sub_type: str = 'ONCE',
+                         namespace: dict = None):
+        decoded_response = self.decode(
+            raw_response, 'subscribe', namespace)
         for response in decoded_response:
             for ret in self.returns:
                 if ret.xpath == response['xpath']:

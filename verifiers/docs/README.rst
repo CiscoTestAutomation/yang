@@ -18,7 +18,8 @@ Then you need to create a new class that inherits from one BaseVerifier or Defal
 Then you can implement methods that you need. List of avaliable methods can be found :doc:`here. </apidocs>`
 
 Now let's look as an example of a custom verifier that counts the number of static routes in the device.
-First we create a new file called `example.py` in the `yang/verifiers` directory and implement `gnmi_decoder` method.
+First we create a new file called `example.py` in the `yang/verifiers` directory and create helper
+decode method, that will be used to decode GNMI response.
 
 
 .. code-block:: python
@@ -30,7 +31,7 @@ First we create a new file called `example.py` in the `yang/verifiers` directory
 
     class CountVerifier(DefaultVerifier):
 
-        def gnmi_decoder(self, response, namespace: dict = None, method: str = 'subscribe') -> List[dict]:
+        def decode(self, response, namespace: dict = None, method: str = 'get') -> List[dict]:
             from genie.libs.sdk.triggers.blitz.gnmi_util import GnmiMessage
             notification = json_format.MessageToDict(response)
             updates = notification['update']['update']
@@ -48,7 +49,8 @@ Then we will implement two methods responsible for verifing subscribe mode in GN
 
 .. code-block:: python
 
-    def subscribe_verify(self, decoded_response: dict, sub_type: str = 'ONCE'):
+    def subscribe_verify(self, raw_response: any, sub_type: str = 'ONCE', namespace: dict = None):
+        decoded_response = self.decode(raw_response, 'subscribe', namespace)
         for response in decoded_response:
             for ret in self.returns:
                 if ret.xpath == response['xpath']:
@@ -74,7 +76,7 @@ section of the trigger file. In our example we will create a 3 new fields `cli_r
 
     from dataclasses import field, dataclass
 
-    class CountVerifier(DefaultVerifier):
+    class CountVerifier(GnmiDefaultVerifier):
         @dataclass
         class MyCustomReturns:
             '''
@@ -117,12 +119,12 @@ Now let's put it all together.
 
     # Import base classes. For non pyats installation you can use class provided within this module
     try:
-        from genie.libs.sdk.triggers.blitz.verifiers import DefaultVerifier
+        from genie.libs.sdk.triggers.blitz.verifiers import GnmiDefaultVerifier
     except ImportError:
-        from yang.verifiers.base_verifier import BaseVerifier as DefaultVerifier
+        from yang.verifiers.base_verifier import BaseVerifier as GnmiDefaultVerifier
 
 
-    class CountVerifier(DefaultVerifier):
+    class CountVerifier(GnmiDefaultVerifier):
         from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
         @dataclass
@@ -149,7 +151,7 @@ Now let's put it all together.
             '''
             self._returns = [self.MyCustomReturns(**r) for r in value]
 
-        def gnmi_decoder(self, response, namespace: dict = None, method: str = 'subscribe') -> List[dict]:
+        def decode(self, response, namespace: dict = None, method: str = 'get', ) -> List[dict]:
             from genie.libs.sdk.triggers.blitz.gnmi_util import GnmiMessage
             notification = json_format.MessageToDict(response)
             updates = notification['update']['update']
@@ -162,7 +164,8 @@ Now let's put it all together.
                 data.append({'xpath': xpath, 'value': decoded_val})
             return data
 
-        def subscribe_verify(self, decoded_response: dict, sub_type: str = 'ONCE'):
+        def subscribe_verify(self, raw_response: any, sub_type: str = 'ONCE', namespace: dict = None):
+            decoded_response = self.decode(raw_response, 'subscribe', namespace)
             for response in decoded_response:
                 for ret in self.returns:
                     if ret.xpath == response['xpath']:
@@ -216,6 +219,13 @@ Then we can use our custom verfier.
                 connection: gnmi
                 operation: subscribe
                 protocol: gnmi
+                content:         
+                    namespace: 
+                        oc-net: http://openconfig.net/yang/network-instance
+                    nodes:
+                    - nodetype: list
+                      datatype: string
+                      xpath: /oc-net:network-instances/oc-net:network-instance/oc-net:protocols/oc-net:protocol/oc-net:static-routes/oc-net:static
                 format: 
                     encoding: JSON
                     request_mode: STREAM
@@ -225,13 +235,6 @@ Then we can use our custom verfier.
                     verifier: 
                         class: yang.verifiers.verifiers.CountVerifier
                         min_count: 1
-                content:         
-                    namespace: 
-                        oc-net: http://openconfig.net/yang/network-instance
-                    nodes:
-                    - nodetype: list
-                      datatype: string
-                      xpath: /oc-net:network-instances/oc-net:network-instance/oc-net:protocols/oc-net:protocol/oc-net:static-routes/oc-net:static
                 returns:
                 - count: 2
                   xpath: network-instances/network-instance/protocols/protocol/static-routes/static
