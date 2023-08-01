@@ -183,8 +183,7 @@ setup(
         'lxml >= 3.3.0',
         'ncclient >= 0.6.6',
         'grpcio',
-        'protobuf ~= 3.20;python_version>="3.7"',
-        'protobuf < 3.20;python_version<"3.7"',
+        'protobuf'
     ],
 
     # any additional groups of dependencies.
