@@ -11,10 +11,8 @@ __author__ = (
 __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc.'
 
-from .count_verifier import CountVerifier
 from .base_verifier import BaseVerifier
 
 __all__ = (
     'BaseVerifier',
-    'CountVerifier',
 )
