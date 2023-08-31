@@ -5,8 +5,8 @@ Implement methods
 -----------------
 
 In this section we will create custom Netconf verifier that counts the number of static routes in the device.
-First we create a new file called `count_verifier.py` in the `yang/verifiers` directory and implement 
-method responsible for verifing get response.
+Example verifier is impelmented in /yang/verifiers/count_verifier.py module and
+code responsible for verifying get response is shown below.
 
 .. code-block:: python
 
@@ -40,9 +40,10 @@ section of the trigger file. In our example we will create a 3 new fields `cli_r
 .. code-block:: python
 
     from dataclasses import field, dataclass
+    from genie.libs.sdk.triggers.blitz.verifiers import NetconfDefaultVerifier
+    from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
     class NetconfCountVerifier(NetconfDefaultVerifier):
-        from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
         @dataclass
         class MyCustomReturns(OptFields):
@@ -78,9 +79,10 @@ By doing this you can now pass, your custom arguments to retruns section like th
 Now let's put it all together.
 
 .. code-block:: python
+    from genie.libs.sdk.triggers.blitz.verifiers import NetconfDefaultVerifier
+    from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
     class NetconfCountVerifier(NetconfDefaultVerifier):
-        from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
         @dataclass
         class MyCustomReturns(OptFields):

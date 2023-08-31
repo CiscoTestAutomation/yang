@@ -5,15 +5,13 @@ Implement methods
 -----------------
 
 In this section we will create custom Gnmi verifier that counts the number of static routes in the device.
-First we create a new file called `count_verifier.py` in the `yang/verifiers` directory and create helper
-decode method, that will be used to decode GNMI response.
+Take a look at the example module /yang/verifiers/count_verifier.py. In this module example Gnmi verifier is implemented
+Module contains implementation of helper method `decode` that is responsible for decoding the response from the device that is shown below.
 
 .. code-block:: python
 
-    # Import base classes. For non pyats installation you can use class provided within this module
-    from genie.libs.sdk.triggers.blitz.verifiers import DefaultVerifier, BaseVerifier, GnmiDefaultVerifier
+    from genie.libs.sdk.triggers.blitz.verifiers import GnmiDefaultVerifier
     from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
-
 
     class GnmiCountVerifier(GnmiDefaultVerifier):
 
@@ -31,7 +29,7 @@ decode method, that will be used to decode GNMI response.
             return data
 
 
-Then we will implement two methods responsible for verifing subscribe mode in GNMI `subscribe_verify` and `end_subscription`.
+Module also implement two methods responsible for verifing subscribe mode in GNMI `subscribe_verify` and `end_subscription`.
 
 .. code-block:: python
 
@@ -61,6 +59,8 @@ section of the trigger file. In our example we will create a 3 new fields `cli_r
 .. code-block:: python
 
     from dataclasses import field, dataclass
+    from genie.libs.sdk.triggers.blitz.verifiers import GnmiDefaultVerifier
+    from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
     class GnmiCountVerifier(GnmiDefaultVerifier):
         @dataclass
@@ -102,16 +102,10 @@ Now let's put it all together.
     from typing import List
     from dataclasses import field, dataclass
     from google.protobuf import json_format
-
-    # Import base classes. For non pyats installation you can use class provided within this module
-    try:
-        from genie.libs.sdk.triggers.blitz.verifiers import GnmiDefaultVerifier
-    except ImportError:
-        from yang.verifiers.base_verifier import BaseVerifier as GnmiDefaultVerifier
-
+    from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
+    from genie.libs.sdk.triggers.blitz.verifiers import GnmiDefaultVerifier
 
     class GnmiCountVerifier(GnmiDefaultVerifier):
-        from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
         @dataclass
         class MyCustomReturns(OptFields):
@@ -226,7 +220,7 @@ Then we can use our custom verfier.
                   xpath: network-instances/network-instance/protocols/protocol/static-routes/static
                   cli_return: '%VARIABLES{testscript.returns}'
 
-As you can see we definie the verifier class in the `format` section of the test case. `class` argument
+As you can see we define the verifier class in the `format` section of the test case. `class` argument
 is obligatory and it should point to the class that implements the verifier using dot notation.
 Also you can pass any number of arguments to the verifier, like `min_count` in the example above.
 Arguments passed to the verifier should be arguments that somehow are shared by all the tests that uses it.
