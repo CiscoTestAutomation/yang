@@ -7,6 +7,8 @@ from google.protobuf import json_format
 import grpc
 from . import proto
 
+from unicon.sshutils import sshtunnel
+
 try:
     from pyats.log.utils import banner
     from pyats.connections import BaseConnection
@@ -264,7 +266,6 @@ class Gnmi(BaseConnection):
                 raise KeyError('No credentials found for gNMI testbed')
         password = to_plaintext(password)
         if 'sshtunnel' in dev_args:
-            from unicon.sshutils import sshtunnel
             try:
                 tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
                 if tunnel_port:
