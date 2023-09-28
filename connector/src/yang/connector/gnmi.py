@@ -7,6 +7,8 @@ from google.protobuf import json_format
 import grpc
 from . import proto
 
+from unicon.sshutils import sshtunnel
+
 try:
     from pyats.log.utils import banner
     from pyats.connections import BaseConnection
@@ -263,9 +265,20 @@ class Gnmi(BaseConnection):
             if not username or not password:
                 raise KeyError('No credentials found for gNMI testbed')
         password = to_plaintext(password)
-
-        host = dev_args.get('host') or dev_args.get('ip')
-        port = str(dev_args.get('port'))
+        if 'sshtunnel' in dev_args:
+            try:
+                tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
+                if tunnel_port:
+                    host = self.device.connections[self.via] \
+                                           .sshtunnel.tunnel_ip
+                    port = tunnel_port
+            except AttributeError as err:
+                raise AttributeError("Cannot add ssh tunnel. \
+                Connection %s may not have ip/host or port.\n%s"
+                                     % (self.via, err))
+        else:
+            host = dev_args.get('host') or dev_args.get('ip')
+            port = str(dev_args.get('port'))
         target = '{0}:{1}'.format(host, port)
 
         options = [('grpc.max_receive_message_length', 1000000000)]
