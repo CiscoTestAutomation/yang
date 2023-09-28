@@ -10,6 +10,8 @@ try:
     from pyats.connections import BaseConnection
     from pyats.utils.secret_strings import to_plaintext
     from pyats.easypy import runtime
+    from genie.libs.sdk.apis.utils import get_local_ip
+    from genie.libs.sdk.apis.iosxe.telemetry.configure import configure_telemetry_ietf_parameters
     from unicon import Connection
 except ImportError:
     # Standalone without pyats install
@@ -72,6 +74,7 @@ class Grpc(BaseConnection):
         self.transporter = dev_args.get('transporter', 'telegraf').lower()
         self.output_file = dev_args.get('output_file', f'{runtime.directory}/mdt')
         self.config_file = dev_args.get('config_file', None)
+        self.sub_connection = dev_args.get('sub_connection', 'ssh')
         self.telegraf_pid = None
 
     @property
@@ -167,6 +170,9 @@ class Grpc(BaseConnection):
         log.info(f"Starting gRPC inbound server on localhost:{allocated_port}")
 
         # call the API to genie configure the service on the device
+        self.device.connect()
+        local_ip = self.device.api.get_local_ip()
+        self.device.api.configure_telemetry_ietf_parameters(501, "yang-push", local_ip, allocated_port, "grpc-tcp")
 
     def disconnect(self):
         if self.telegraf_pid:
