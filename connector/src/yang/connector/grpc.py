@@ -4,6 +4,7 @@ import re
 import socket
 import configparser
 import subprocess
+import psutil
 
 try:
     from pyats.log.utils import banner
@@ -74,8 +75,9 @@ class Grpc(BaseConnection):
         self.transporter = dev_args.get('transporter', 'telegraf').lower()
         self.output_file = dev_args.get('output_file', f'{runtime.directory}/mdt')
         self.config_file = dev_args.get('config_file', None)
-        self.sub_connection = dev_args.get('sub_connection', 'ssh')
-        self.telegraf_pid = None
+        self.telemetry_subscription_id = dev_args.get('telemetry_subscription_id', 11172017)
+
+        self.telegraf_process = None
 
     @property
     def connected(self):
@@ -85,95 +87,93 @@ class Grpc(BaseConnection):
     def connect(self):
         allocated_port = None
 
-        def spawn_server_subprocess():
-            # Allocate a random available port to localhost
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
-                nonlocal allocated_port
-                grpc_socket.bind(('localhost', 0))
-                _, allocated_port = grpc_socket.getsockname()
+        # Allocate a random available port to localhost
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
+            grpc_socket.bind(('localhost', 0))
+            _, allocated_port = grpc_socket.getsockname()
 
-                # run config generation within context manager to hold port until it can be passed to telegraf
-                if self.transporter == 'telegraf':
-                    config = configparser.ConfigParser()
-                    if self.config_file:
-                        # load configuration file
-                        config.read(self.config_file)
+            # run config generation within context manager to hold port until it can be passed to telegraf
+            if self.transporter == 'telegraf':
+                config = configparser.ConfigParser()
+                if self.config_file:
+                    # load configuration file
+                    config.read(self.config_file)
+                    if '[inputs.cisco_telemetry_mdt]' not in config.sections():
+                        config.add_section('[inputs.cisco_telemetry_mdt]')
+
+                    # update input socket listener
+                    config.set('[inputs.cisco_telemetry_mdt]', 'transport', '"grpc"')
+                    config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
+
+                    # write configuration file
+                    with open(self.config_file, 'w') as f:
+                        log.info(f"Writing config to {self.config_file}")
+                        config.write(f)
+                else:
+                    # set config file path
+                    self.config_file = f"{runtime.directory}/telegraf.conf"
+                    config.read(self.config_file)
+
+                    # if the file already exists, only update the port
+                    if config.sections():
                         if '[inputs.cisco_telemetry_mdt]' not in config.sections():
                             config.add_section('[inputs.cisco_telemetry_mdt]')
 
-                        # update input socket listener
                         config.set('[inputs.cisco_telemetry_mdt]', 'transport', '"grpc"')
                         config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
 
-                        # write configuration file
                         with open(self.config_file, 'w') as f:
                             log.info(f"Writing config to {self.config_file}")
                             config.write(f)
                     else:
-                        # set config file path
-                        self.config_file = f"{runtime.directory}/telegraf.conf"
-                        config.read(self.config_file)
+                        # generate a default configuration file
+                        with open(self.config_file, 'w') as f:
+                            log.info(f"Creating telegraf config file {self.config_file}")
+                            f.write('')
 
-                        # if the file already exists, only update the port
-                        if config.sections():
-                            if '[inputs.cisco_telemetry_mdt]' not in config.sections():
-                                config.add_section('[inputs.cisco_telemetry_mdt]')
+                        # create default config
+                        # global tags
+                        config.add_section('global_tags')
+                        config.set('global_tags', 'user', r'"${USER}"')
 
-                            config.set('[inputs.cisco_telemetry_mdt]', 'transport', '"grpc"')
-                            config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
+                        # input configuration
+                        config.add_section('[inputs.cisco_telemetry_mdt]')
+                        config.set('[inputs.cisco_telemetry_mdt]', 'transport', '"grpc"')
+                        config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
 
-                            with open(self.config_file, 'w') as f:
-                                log.info(f"Writing config to {self.config_file}")
-                                config.write(f)
-                        else:
-                            # generate a default configuration file
-                            with open(self.config_file, 'w') as f:
-                                log.info(f"Creating telegraf config file {self.config_file}")
-                                f.write('')
+                        # default output config - to file in runtime or user supplied dir
+                        config.add_section('[outputs.file]')
+                        config.set('[outputs.file]', 'files', f'["stdout", "{self.output_file}"]')
+                        config.set('[outputs.file]', 'data_format', '"json"')
+                        config.set('[outputs.file]', 'json_timestamp_units', '"1ms"')
+                        config.set('[outputs.file]', 'rotation_max_size', '"2048MB"')
+                        config.set('[outputs.file]', 'flush_jitter', '"500ms"')
 
-                            # create default config
-                            # global tags
-                            config.add_section('global_tags')
-                            config.set('global_tags', 'user', r'"${USER}"')
+                        # apply config
+                        with open(self.config_file, 'w') as f:
+                            log.info(f"Updating {self.config_file}")
+                            config.write(f)
 
-                            # input configuration
-                            config.add_section('[inputs.cisco_telemetry_mdt]')
-                            config.set('[inputs.cisco_telemetry_mdt]', 'transport', '"grpc"')
-                            config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
+        # exit context manager to release port
+        # spawn telegraf/pipeline using config
+        self.telegraf_process = subprocess.Popen(f"telegraf -config '{self.config_file}'", shell=True)
 
-                            # default output config - to file in runtime or user supplied dir
-                            config.add_section('[outputs.file]')
-                            config.set('[outputs.file]', 'files', f'["stdout", "{self.output_file}"]')
-                            config.set('[outputs.file]', 'data_format', '"json"')
-                            config.set('[outputs.file]', 'json_timestamp_units', '"1ms"')
-                            config.set('[outputs.file]', 'rotation_max_size', '"2048MB"')
-                            config.set('[outputs.file]', 'flush_jitter', '"500ms"')
-
-                            # apply config
-                            with open(self.config_file, 'w') as f:
-                                log.info(f"Updating {self.config_file}")
-                                config.write(f)
-
-                # exit context manager to release port
-                # spawn telegraf/pipeline using config
-                subprocess.run(f"telegraf -config '{self.config_file}' &", shell=True)
-                ps_out = subprocess.run(f"ps | grep telegraf | grep -v grep",
-                                        shell=True, stdout=subprocess.PIPE, text=True)
-                self.telegraf_pid = int(re.findall(r'^\d+', ps_out.stdout.strip())[0])
-
-                # log port
-                log.info(f"Server is listening on port {allocated_port}")
-                log.info(f"Telegraf is running as PID {self.telegraf_pid}")
-
-        grpc_inbound_server_process = multiprocessing.Process(target=spawn_server_subprocess())
-        grpc_inbound_server_process.start()
-        log.info(f"Starting gRPC inbound server on localhost:{allocated_port}")
+        # log port
+        log.info(f"Telegraf is running as PID {self.telegraf_process.pid} on port {allocated_port}")
 
         # call the API to genie configure the service on the device
         self.device.connect()
         local_ip = self.device.api.get_local_ip()
-        self.device.api.configure_telemetry_ietf_parameters(501, "yang-push", local_ip, allocated_port, "grpc-tcp")
+        if isinstance(self.telemetry_subscription_id, dict):
+            if 'sub_id' in self.telemetry_subscription_id:
+                sub_id = self.telemetry_subscription_id['sub_id']
+            else:
+                sub_id = 11172017
+
+        self.device.api.configure_telemetry_ietf_parameters(self.telemetry_subscription_id,
+                                                            "yang-push", local_ip, allocated_port, "grpc-tcp")
+        log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
 
     def disconnect(self):
-        if self.telegraf_pid:
-            subprocess.run(f"kill {self.telegraf_pid}", shell=True)
+        self.telegraf_process.terminate()
+        self.device.disconnect()
