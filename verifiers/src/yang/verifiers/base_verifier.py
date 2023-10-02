@@ -33,7 +33,7 @@ class BaseVerifier(ABC):
                           *args,
                           **kwargs) -> bool:
         """
-        Used Get and Set test cases validation.
+        Used for Get test cases validation.
 
         Args:
             raw_response (any): Response received from the device.
