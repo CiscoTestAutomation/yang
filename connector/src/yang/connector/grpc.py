@@ -1,10 +1,7 @@
 import logging
-import multiprocessing
-import re
 import socket
 import configparser
 import subprocess
-import psutil
 
 try:
     from pyats.log.utils import banner
@@ -12,7 +9,7 @@ try:
     from pyats.utils.secret_strings import to_plaintext
     from pyats.easypy import runtime
     from genie.libs.sdk.apis.utils import get_local_ip
-    from genie.libs.sdk.apis.iosxe.telemetry.configure import configure_telemetry_ietf_parameters
+    from genie.libs.sdk.apis.iosxe.telemetry.configure import *
     from unicon import Connection
 except ImportError:
     # Standalone without pyats install
@@ -54,7 +51,8 @@ class Grpc(BaseConnection):
         self.log = log
         self.log.setLevel(logging.INFO)
 
-        if protocol := dev_args.get('protocol', '').lower() != 'grpc':
+        protocol = dev_args.get('protocol', 'grpc').lower()
+        if protocol != 'grpc':
             msg = f"Invalid protocol {protocol}"
             raise TypeError(msg)
 
@@ -77,7 +75,7 @@ class Grpc(BaseConnection):
         self.config_file = dev_args.get('config_file', None)
         self.telemetry_subscription_id = dev_args.get('telemetry_subscription_id', 11172017)
 
-        self.telegraf_process = None
+        self.transport_process = None
 
     @property
     def connected(self):
@@ -156,24 +154,19 @@ class Grpc(BaseConnection):
 
         # exit context manager to release port
         # spawn telegraf/pipeline using config
-        self.telegraf_process = subprocess.Popen(f"telegraf -config '{self.config_file}'", shell=True)
+        self.transport_process = subprocess.Popen(f"telegraf -config '{self.config_file}'", shell=True)
 
         # log port
-        log.info(f"Telegraf is running as PID {self.telegraf_process.pid} on port {allocated_port}")
+        log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
 
         # call the API to genie configure the service on the device
         self.device.connect()
         local_ip = self.device.api.get_local_ip()
-        if isinstance(self.telemetry_subscription_id, dict):
-            if 'sub_id' in self.telemetry_subscription_id:
-                sub_id = self.telemetry_subscription_id['sub_id']
-            else:
-                sub_id = 11172017
-
         self.device.api.configure_telemetry_ietf_parameters(self.telemetry_subscription_id,
                                                             "yang-push", local_ip, allocated_port, "grpc-tcp")
         log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
 
     def disconnect(self):
-        self.telegraf_process.terminate()
+        self.transport_process.terminate()
+        self.device.api.unconfigure_telemetry_ietf_subscription(self.telemetry_subscription_id)
         self.device.disconnect()
