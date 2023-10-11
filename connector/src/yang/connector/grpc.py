@@ -1,4 +1,6 @@
 import logging
+import multiprocessing
+import re
 import socket
 import configparser
 import subprocess
@@ -18,7 +20,7 @@ log = logging.getLogger(__name__)
 
 
 class Grpc(BaseConnection):
-    """Session handling for gNMI connections.
+    """Session handling for Grpc outbound connections.
 
         Can be used with pyATS same as yang.connector.Netconf is used or
         can be used as a standalone module.
