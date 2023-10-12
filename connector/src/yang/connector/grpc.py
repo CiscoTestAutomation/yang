@@ -32,7 +32,7 @@ class Grpc(BaseConnection):
         Python 3.11.5 (main, Sep 25 2023, 16:57:00) [Clang 14.0.0 (clang-1400.0.29.202)]
 
         >>> from pyats.topology.loader import load
-        >>> testbed = load('/Users/lgerrior/Library/Application Support/JetBrains/PyCharm2023.1/scratches/testbed.yaml')
+        >>> testbed = load('/Users/user/testbed.yaml')
         -------------------------------------------------------------------------------
         >>> dev = testbed.devices['router-1']
         >>> dev.connect(via='grpc', alias='grpc')
