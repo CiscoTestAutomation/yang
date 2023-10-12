@@ -23,8 +23,20 @@ log = logging.getLogger(__name__)
 class Grpc(BaseConnection):
     """Session handling for Grpc outbound connections.
 
-        Can be used with pyATS same as yang.connector.Netconf is used or
-        can be used as a standalone module.
+        Can be used with pyATS same as yang.connector
+
+        EXAMPLE USAGE
+
+        Welcome to pyATS Interactive Shell
+        ==================================
+        Python 3.11.5 (main, Sep 25 2023, 16:57:00) [Clang 14.0.0 (clang-1400.0.29.202)]
+
+        >>> from pyats.topology.loader import load
+        >>> testbed = load('/Users/lgerrior/Library/Application Support/JetBrains/PyCharm2023.1/scratches/testbed.yaml')
+        -------------------------------------------------------------------------------
+        >>> dev = testbed.devices['router-1']
+        >>> dev.connect(via='grpc', alias='grpc')
+
     """
     def __new__(cls, *args, **kwargs):
         transporter = kwargs.get('transporter', 'telegraf')
@@ -85,6 +97,9 @@ class Grpc(BaseConnection):
 
 
 class GrpcTelegraf(Grpc):
+    """
+    Subclass for using Telegraf to collect telemetry
+    """
     @property
     def connected(self):
         """Return True if session is connected."""
