@@ -4,6 +4,7 @@ import re
 import socket
 import configparser
 import subprocess
+import tempfile
 from shutil import copyfile
 
 from pyats.connections import BaseConnection
@@ -56,6 +57,11 @@ class Grpc(BaseConnection):
 
         self.host = dev_args.get('host') or dev_args.get('ip')
 
+        self.overwrite = dev_args.get('overwrite_config_file', False)
+        if self.overwrite:
+            self.config_directory = runtime.directory
+        else:
+            self.config_directory = tempfile.mkdtemp()
         self.transporter = dev_args.get('transporter', 'telegraf').lower()
         try:
             self.output_file = copyfile(dev_args.get('output_file', None), f"{runtime.directory}/mdt")
@@ -89,7 +95,6 @@ class GrpcTelegraf(Grpc):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
             grpc_socket.bind(('localhost', 0))
             _, allocated_port = grpc_socket.getsockname()
-
             # run config generation within context manager to hold port until it can be passed to telegraf
             config = configparser.ConfigParser()
             if self.config_file:
@@ -102,8 +107,9 @@ class GrpcTelegraf(Grpc):
                 config.set('[inputs.cisco_telemetry_mdt]', 'transport', '"grpc"')
                 config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
 
-                # write configuration file
-                with open(f"runtime.directory", 'w') as f:
+                # write configuration file to temp dir and use that
+                self.config_file = f"{self.config_directory}/telegraf.conf"
+                with open(f"{self.config_file}", 'w') as f:
                     log.info(f"Writing config to {self.config_file}")
                     config.write(f)
             else:
@@ -119,8 +125,10 @@ class GrpcTelegraf(Grpc):
                     config.set('[inputs.cisco_telemetry_mdt]', 'transport', '"grpc"')
                     config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
 
-                    with open(self.config_file, 'w') as f:
-                        log.info(f"Writing config to {self.config_file}")
+                    # Don't overwrite first file, stick that in /tmp/
+                    self.config_file = f"{self.config_directory}/telegraf.conf"
+                    with open(f"{self.config_directory}/telegraf.conf", 'w') as f:
+                        log.info(f"Writing config to {self.config_directory}/telegraf.conf")
                         config.write(f)
                 else:
                     # generate a default configuration file
