@@ -29,6 +29,9 @@ class Grpc(Grpc):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
             grpc_socket.bind(('localhost', 0))
             _, allocated_port = grpc_socket.getsockname()
+
+            allocated_port = self.transporter_port or allocated_port
+
             # run config generation within context manager to hold port until it can be passed to telegraf
             config = configparser.ConfigParser()
             if self.config_file:
@@ -102,11 +105,12 @@ class Grpc(Grpc):
 
         # call the API to genie configure the service on the device
         self.device.instantiate()
-        if self.device.default.__class__:
+        if 'unicon' in self.device.default.__module__:
             self.device.connect()
         else:
             raise ValueError('Connection Class is not Unicon')
-        local_ip = self.device.api.get_local_ip()
+        local_ip = self.transporter_ip or self.device.api.get_local_ip()
+        self.device.api.configure_netconf_yang()
         self.device.api.configure_telemetry_ietf_parameters(self.telemetry_subscription_id,
                                                             "yang-push", local_ip, allocated_port, "grpc-tcp")
         log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")

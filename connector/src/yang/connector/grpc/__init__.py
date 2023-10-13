@@ -24,7 +24,7 @@ class Grpc(BaseConnection):
         >>> from pyats.topology.loader import load
         >>> testbed = load('/Users/user/testbed.yaml')
         -------------------------------------------------------------------------------
-        >>> dev = testbed.devices['router-1']
+        >>> dev = testbed.devices['router-1.yaml']
         >>> dev.connect(via='grpc', alias='grpc')
 
     """
@@ -76,3 +76,5 @@ class Grpc(BaseConnection):
         self.telemetry_subscription_id = dev_args.get('telemetry_subscription_id', 11172017)
 
         self.transport_process = None
+        self.transporter_ip = dev_args.get('transporter_ip', None)
+        self.transporter_port = dev_args.get('transporter_port', None)
