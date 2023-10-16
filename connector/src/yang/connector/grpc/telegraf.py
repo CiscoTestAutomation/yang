@@ -26,7 +26,7 @@ class Grpc(Grpc):
 
     def connect(self):
         """
-        Configures and boots a telegraf process on the machine that executes the connect method wherin
+        Configures and starts a telegraf process on the machine that executes the connect method wherin
         telegraf is opened in a Python subprocess.
 
         The network device is then connected via Unicon CLI and the outbound telemetry process that corresponds
@@ -35,7 +35,7 @@ class Grpc(Grpc):
 
         # Allocate a random available port to localhost
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
-            grpc_socket.bind(('localhost', 0))
+            grpc_socket.bind(('0.0.0.0', 0))
             _, allocated_port = grpc_socket.getsockname()
 
             allocated_port = self.transporter_port or allocated_port
