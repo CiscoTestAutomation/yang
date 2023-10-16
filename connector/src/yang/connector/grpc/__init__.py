@@ -15,6 +15,32 @@ class Grpc(BaseConnection):
 
         Can be used with pyATS same as yang.connector
 
+        EXAMPLE TESTBED
+
+        devices:
+          router-1:
+            connections:
+              a:
+                ip: 10.10.0.1
+                port: 23
+                protocol: telnet
+              grpc:
+                ip: 10.10.0.1
+                protocol: grpc
+                class: yang.connector.Grpc
+                overwrite_config_file: True                                     (Optional, default: False)
+                config_file: /Users/user/telemetry/router_1/config.conf         (Optional, default: ./transporter.conf)
+                output_file: /Users/user/telemetry/router_1/output.txt          (Optional, default: ./mdt)
+                telemetry_subscription_id: 501                                  (Optional, default: 11172017)
+                transporter: telegraf                                           (Optional, default: telegraf)
+                transporter_ip: 192.168.0.253                                   (Optional, default will fetch local IP)
+                transporter_port: 56789                                         (Optional, default is a dynamic port)
+            credentials:
+              default:
+                username: user
+                password: cisco123
+            os: iosxe
+
         EXAMPLE USAGE
 
         Welcome to pyATS Interactive Shell
@@ -70,7 +96,7 @@ class Grpc(BaseConnection):
             self.config_directory = tempfile.mkdtemp()
         self.output_file = dev_args.get('output_file', f"{runtime.directory}/mdt")
         try:
-            self.config_file = copyfile(dev_args.get('config_file', None), f"{runtime.directory}/telegraf.conf")
+            self.config_file = copyfile(dev_args.get('config_file', None), f"{runtime.directory}/transporter.conf")
         except TypeError:
             self.config_file = None
         self.telemetry_subscription_id = dev_args.get('telemetry_subscription_id', 11172017)

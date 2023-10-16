@@ -25,6 +25,14 @@ class Grpc(Grpc):
         return True
 
     def connect(self):
+        """
+        Configures and boots a telegraf process on the machine that executes the connect method wherin
+        telegraf is opened in a Python subprocess.
+
+        The network device is then connected via Unicon CLI and the outbound telemetry process that corresponds
+        to the booted telegraf process is configured on the device, with the CLI connection remaining open
+        """
+
         # Allocate a random available port to localhost
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
             grpc_socket.bind(('localhost', 0))
@@ -45,13 +53,13 @@ class Grpc(Grpc):
                 config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
 
                 # write configuration file to temp dir and use that
-                self.config_file = f"{self.config_directory}/telegraf.conf"
+                self.config_file = f"{self.config_directory}/transporter.conf"
                 with open(f"{self.config_file}", 'w') as f:
                     log.info(f"Writing config to {self.config_file}")
                     config.write(f)
             else:
                 # set config file path
-                self.config_file = f"{runtime.directory}/telegraf.conf"
+                self.config_file = f"{runtime.directory}/transporter.conf"
                 config.read(self.config_file)
 
                 # if the file already exists, only update the port
@@ -63,9 +71,9 @@ class Grpc(Grpc):
                     config.set('[inputs.cisco_telemetry_mdt]', 'service_address', f'":{allocated_port}"')
 
                     # Don't overwrite first file, stick that in /tmp/
-                    self.config_file = f"{self.config_directory}/telegraf.conf"
-                    with open(f"{self.config_directory}/telegraf.conf", 'w') as f:
-                        log.info(f"Writing config to {self.config_directory}/telegraf.conf")
+                    self.config_file = f"{self.config_directory}/transporter.conf"
+                    with open(f"{self.config_directory}/transporter.conf", 'w') as f:
+                        log.info(f"Writing config to {self.config_directory}/transporter.conf")
                         config.write(f)
                 else:
                     # generate a default configuration file
@@ -116,6 +124,10 @@ class Grpc(Grpc):
         log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
 
     def disconnect(self):
+        """
+        Terminates the running telegraf process on the local machine, deconfigures the subscription from the device
+        and disconnects from the subordinate CLI connection
+        """
         self.transport_process.terminate()
         self.device.api.unconfigure_telemetry_ietf_subscription(self.telemetry_subscription_id)
         self.device.disconnect()
