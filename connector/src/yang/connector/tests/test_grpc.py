@@ -1,14 +1,24 @@
 import os
 import unittest
+import subprocess
 from unicon.plugins.tests.mock.mock_device_iosxe import MockDeviceTcpWrapperIOSXE
 
 from pyats.topology import loader
 from time import sleep
 
+telegraf_installed = subprocess.run(['which', 'telegraf']).returncode == 0
 
+
+@unittest.skipIf(telegraf_installed is False, "Telegraf not installed on host")
 class TestGrpc(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if subprocess.run(['which', 'telegraf']).returncode == 0:
+            cls.telegraf_installed = True
+
     def setUp(self) -> None:
-        self.md = MockDeviceTcpWrapperIOSXE(port=45678, state='enable', mock_data_dir='mock_devices', hostname='router-1')
+        self.md = MockDeviceTcpWrapperIOSXE(port=45678, state='enable', mock_data_dir='mock_devices',
+                                            hostname='router-1')
         self.md.start()
         self.tb_yaml = f"""
 devices:
@@ -65,6 +75,7 @@ devices:
             platform: isr4k
                 """
         testbed = loader.load(tb_yaml)
+
         dev = testbed.devices['router-1']
         dev.connect(via='grpc', alias='grpc')
 
