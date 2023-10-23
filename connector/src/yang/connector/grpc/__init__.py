@@ -25,12 +25,11 @@ class Grpc(BaseConnection):
                 port: 23
                 protocol: telnet
               grpc:
-                ip: 10.10.0.1
                 protocol: grpc
                 class: yang.connector.Grpc
                 overwrite_config_file: True                                     (Optional, default: False)
                 config_file: /Users/user/telemetry/router_1/config.conf         (Optional, default: ./transporter.conf)
-                output_file: /Users/user/telemetry/router_1/output.txt          (Optional, default: ./mdt)
+                output_file: /Users/user/telemetry/router_1/output.txt          (Optional, default: ./mdt.json)
                 telemetry_subscription_id: 501                                  (Optional, default: 11172017)
                 transporter: telegraf                                           (Optional, default: telegraf)
                 transporter_ip: 192.168.0.253                                   (Optional, default will fetch local IP)
@@ -95,7 +94,7 @@ class Grpc(BaseConnection):
             self.config_directory = runtime.directory
         else:
             self.config_directory = tempfile.mkdtemp()
-        self.output_file = dev_args.get('output_file', f"{runtime.directory}/mdt")
+        self.output_file = dev_args.get('output_file', f"{runtime.directory}/mdt.json")
         try:
             self.config_file = copyfile(dev_args.get('config_file', None), f"{runtime.directory}/transporter.conf")
         except TypeError:

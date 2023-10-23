@@ -2,11 +2,8 @@ import logging
 import socket
 import configparser
 import subprocess
-import tempfile
 
-from pyats.connections import BaseConnection
 from pyats.easypy import runtime
-from pyats.utils.secret_strings import to_plaintext
 from unicon.bases.connection import Connection
 
 from . import Grpc
@@ -22,12 +19,13 @@ class Grpc(Grpc):
     @property
     def connected(self):
         """Return True if session is connected."""
-        if not self.transport_process.poll():
+        poll_status = self.transport_process.poll()
+        if not poll_status:
             # when poll returns None then the process is still alive
             return True
         else:
             # when process is killed, poll returns its exit code
-            return self.transport_process.poll()
+            return poll_status
 
     def connect(self):
         """
@@ -113,40 +111,46 @@ class Grpc(Grpc):
         # spawn telegraf/pipeline using config
         if subprocess.run(['which', 'telegraf']).returncode == 0:
             self.transport_process = subprocess.Popen(f"telegraf -config '{self.config_file}'", shell=True)
+            # log port
+            log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
         else:
             raise OSError('Telegraf is not installed')
-        # log port
-        log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
 
-        # check if there is an existing unicon connection
-        active_connection = None
-        for conn_alias in self.device.connectionmgr.connections:
-            conn = self.device.connectionmgr.connections[conn_alias]
-            if isinstance(conn, Connection) and conn.connected:
-                active_connection = conn_alias
-                break
-        # create one if there isn't
-        if not active_connection:
-            self.device.instantiate()
-            if 'unicon' in self.device.default.__module__:
-                self.device.connect()
-            else:
-                raise ValueError('Connection Class is not Unicon')
-            active_connection = self.device.connectionmgr.connections._default_alias
+        if self.telemetry_autoconfigure:
+            # check if there is an existing unicon connection
+            active_connection = None
+            for conn_alias in self.device.connectionmgr.connections:
+                conn = self.device.connectionmgr.connections[conn_alias]
+                if isinstance(conn, Connection) and conn.connected:
+                    active_connection = conn_alias
+                    break
+            # create one if there isn't
+            if not active_connection:
+                self.device.instantiate()
+                if 'unicon' in self.device.default.__module__:
+                    self.device.connect()
+                else:
+                    raise ValueError('Connection Class is not Unicon')
+                active_connection = self.device.connectionmgr.connections._default_alias
 
-        # run configurations while ensuring that it is using a unicon default connection
-        with self.device.temp_default_alias(active_connection):
-            local_ip = self.transporter_ip or self.device.api.get_local_ip()
-            if self.telemetry_autoconfigure:
+            # run configurations while ensuring that it is using a unicon default connection
+            with self.device.temp_default_alias(active_connection):
+                local_ip = self.transporter_ip or self.device.api.get_local_ip()
                 self.device.api.configure_netconf_yang()
                 self.device.api.configure_telemetry_ietf_parameters(self.telemetry_subscription_id,
                                                                     "yang-push", local_ip, allocated_port, "grpc-tcp")
 
-        self.device.connections['grpc'].update({
-            'transporter_ip': local_ip,
-            'transporter_port': allocated_port
-        })
-        log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
+            self.device.connections['grpc'].update({
+                'transporter_ip': local_ip,
+                'transporter_port': allocated_port
+            })
+            log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
+        else:
+            self.device.connections['grpc'].update({
+                'transporter_ip': "0.0.0.0",
+                'transporter_port': allocated_port
+            })
+            log.info(f"Started gRPC inbound server on 0.0.0.0:{allocated_port}")
 
     def disconnect(self):
         """
@@ -156,4 +160,4 @@ class Grpc(Grpc):
         self.transport_process.terminate()
         if self.telemetry_autoconfigure:
             self.device.api.unconfigure_telemetry_ietf_subscription(self.telemetry_subscription_id)
-        self.device.disconnect()
+            self.device.disconnect()
