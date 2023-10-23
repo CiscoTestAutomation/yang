@@ -35,6 +35,7 @@ class Grpc(BaseConnection):
                 transporter: telegraf                                           (Optional, default: telegraf)
                 transporter_ip: 192.168.0.253                                   (Optional, default will fetch local IP)
                 transporter_port: 56789                                         (Optional, default is a dynamic port)
+                autoconfigure: True                                             (Optional, default: True)
             credentials:
               default:
                 username: user
@@ -102,5 +103,6 @@ class Grpc(BaseConnection):
         self.telemetry_subscription_id = dev_args.get('telemetry_subscription_id', 11172017)
 
         self.transport_process = None
+        self.telemetry_autoconfigure = dev_args.get('autoconfigure', True)
         self.transporter_ip = dev_args.get('transporter_ip', None)
         self.transporter_port = dev_args.get('transporter_port', None)
