@@ -69,7 +69,8 @@ devices:
         dev.connect(via='grpc', alias='grpc')
 
         # give telegraf the opportunity to boot
-        sleep(10)
+        sleep(5)
+        assert len(dev.connectionmgr.connections) == 1
         dev.grpc.disconnect()
 
     def test_connect_disconnect(self):
