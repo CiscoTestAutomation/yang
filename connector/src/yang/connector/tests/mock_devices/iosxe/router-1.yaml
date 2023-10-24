@@ -1,0 +1,37 @@
+enable:
+  prompt: 'router-1#'
+  commands:
+    term length 0: ''
+    term width 0: ''
+    show version: ''
+    config term:
+      new_state: config_term
+config_term:
+  prompt: 'router-1(config)#'
+  commands:
+    no logging console: ''
+    netconf-yang: ''
+    line console 0:
+      new_state: config_line
+    end:
+      new_state: enable
+    no telemetry ietf subscription 11172017: ''
+    telemetry ietf subscription 11172017:
+      new_state: config_mdt_subs
+config_line:
+  prompt: 'router-1(config-line)#'
+  commands:
+    exec-timeout 0: ''
+    line vty 0 4: ''
+    end:
+      new_state: enable
+config_mdt_subs:
+  prompt: 'router-1(config-mdt-subs)#'
+  commands:
+    receiver ip address 127.0.0.1 56789 protocol grpc-tcp: ''
+    stream yang-push: ''
+    "filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization/five-seconds": ''
+    encoding encode-kvgpb: ''
+    update-policy periodic 500: ''
+    end:
+      new_state: enable
