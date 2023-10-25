@@ -12,7 +12,10 @@ __contact__ = 'yang-python@cisco.com'
 __copyright__ = 'Cisco Systems, Inc.'
 
 from .base_verifier import BaseVerifier
+from .count_verifier import NetconfCountVerifier, GnmiCountVerifier
 
 __all__ = (
     'BaseVerifier',
+    'NetconfCountVerifier',
+    'GnmiCountVerifier'
 )

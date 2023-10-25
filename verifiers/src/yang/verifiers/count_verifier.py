@@ -9,11 +9,11 @@ except ImportError:
     from yang.verifiers.base_verifier import BaseVerifier as GnmiDefaultVerifier
 
 
-class CountVerifier(GnmiDefaultVerifier):
+class GnmiCountVerifier(GnmiDefaultVerifier):
     from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
     @dataclass
-    class MyCustomReturns(OptFields):
+    class CustomReturns(OptFields):
         '''
         Create a custom returns class to be used by the verifier
         by adding new fields to the default returns dataclass
@@ -23,15 +23,15 @@ class CountVerifier(GnmiDefaultVerifier):
         found_items: int = 0
 
     @property
-    def returns(self) -> List[MyCustomReturns]:
+    def returns(self) -> List[CustomReturns]:
         return self._returns
 
     @returns.setter
-    def returns(self, value: List[dict]) -> List[MyCustomReturns]:
+    def returns(self, value: List[dict]) -> List[CustomReturns]:
         '''
         Register our custom returns class
         '''
-        self._returns = [self.MyCustomReturns(**r) for r in value]
+        self._returns = [self.CustomReturns(**r) for r in value]
 
     def decode(self, response, namespace: dict = None, method: str = 'get') -> List[dict]:
         from genie.libs.sdk.triggers.blitz.gnmi_util import GnmiMessage
@@ -71,7 +71,7 @@ class NetconfCountVerifier(NetconfDefaultVerifier):
     from genie.libs.sdk.triggers.blitz.rpcverify import OptFields
 
     @dataclass
-    class MyCustomReturns(OptFields):
+    class CustomReturns(OptFields):
         '''
         Create a custom returns class to be used by the verifier
         by adding new fields to the default returns dataclass
@@ -81,15 +81,15 @@ class NetconfCountVerifier(NetconfDefaultVerifier):
         found_items: int = 0
 
     @property
-    def returns(self) -> List[MyCustomReturns]:
+    def returns(self) -> List[CustomReturns]:
         return self._returns
 
     @returns.setter
-    def returns(self, value: List[dict]) -> List[MyCustomReturns]:
+    def returns(self, value: List[dict]) -> List[CustomReturns]:
         '''
         Register our custom returns class
         '''
-        self._returns = [self.MyCustomReturns(**r) for r in value]
+        self._returns = [self.CustomReturns(**r) for r in value]
 
     def get_config_verify(self, raw_response: Any) -> bool:
         # Here we have raw netconf xml response
