@@ -252,12 +252,15 @@ class ModelDevice(Netconf):
             >>>
         '''
 
-        d = ModelDownloader(self, folder)
-        if download == 'force':
-            d.download_all(check_before_download=False)
-        elif download == 'check':
-            d.download_all(check_before_download=True)
-        self.compiler = ModelCompiler(folder)
+        if self.compiler is None:
+            d = ModelDownloader(self, folder)
+            if download == 'force':
+                d.download_all(check_before_download=False)
+            elif download == 'check':
+                d.download_all(check_before_download=True)
+            self.compiler = ModelCompiler(folder)
+        else:
+            logger.info('Models are already scanned')
 
     def load_model(self, model):
         '''load_model
@@ -320,35 +323,39 @@ class ModelDevice(Netconf):
             >>>
         '''
 
-        if os.path.isfile(model):
-            file_name, file_ext = os.path.splitext(model)
-            if file_ext.lower() == '.xml':
-                logger.debug('Read model file {}'.format(model))
-                with open(model, 'r') as f:
-                    xml = f.read()
-                parser = etree.XMLParser(remove_blank_text=True)
-                tree = etree.XML(xml, parser)
-                m = Model(tree)
+        if model not in self.models:
+            if os.path.isfile(model):
+                file_name, file_ext = os.path.splitext(model)
+                if file_ext.lower() == '.xml':
+                    logger.debug('Read model file {}'.format(model))
+                    with open(model, 'r') as f:
+                        xml = f.read()
+                    parser = etree.XMLParser(remove_blank_text=True)
+                    tree = etree.XML(xml, parser)
+                    m = Model(tree)
+                else:
+                    raise ValueError("'{}' is not a file with extension 'xml'"
+                                     .format(model))
+            elif model in self.models_loadable:
+                if self.compiler is None:
+                    raise ValueError('please first call scan_models() to build '
+                                     'up supported namespaces of a device')
+                else:
+                    m = self.compiler.compile(model)
             else:
-                raise ValueError("'{}' is not a file with extension 'xml'"
-                                 .format(model))
-        elif model in self.models_loadable:
-            if self.compiler is None:
-                raise ValueError('please first call scan_models() to build '
-                                 'up supported namespaces of a device')
+                raise ValueError("argument 'model' {} needs to be either a model "
+                                 "name or a compiled model xml file".format(model))
+            if m.name in self.models:
+                self.nodes = {k: v for k, v in self.nodes.items()
+                              if self.roots[k.split(' ')[0]] != m.name}
+                logger.info('Model {} is reloaded'.format(m.name))
             else:
-                m = self.compiler.compile(model)
+                logger.info('Model {} is loaded'.format(m.name))
+            self.models[m.name] = m
+            return m
         else:
-            raise ValueError("argument 'model' {} needs to be either a model "
-                             "name or a compiled model xml file".format(model))
-        if m.name in self.models:
-            self.nodes = {k: v for k, v in self.nodes.items()
-                          if self.roots[k.split(' ')[0]] != m.name}
-            logger.info('Model {} is reloaded'.format(m.name))
-        else:
-            logger.info('Model {} is loaded'.format(m.name))
-        self.models[m.name] = m
-        return m
+            logger.info(f'Model {model} is already loaded')
+            return self.models[model]
 
     def execute(self, operation, *args, **kwargs):
         '''execute
