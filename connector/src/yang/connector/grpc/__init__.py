@@ -3,8 +3,14 @@ import tempfile
 from importlib import import_module
 from shutil import copyfile
 
-from pyats.connections import BaseConnection
-from pyats.easypy import runtime
+try:
+    from pyats.connections import BaseConnection
+    from pyats.easypy import runtime
+except ImportError:
+    class BaseConnection:
+        pass
+    class runtime:
+        pass
 
 # create a logger for this module
 log = logging.getLogger(__name__)

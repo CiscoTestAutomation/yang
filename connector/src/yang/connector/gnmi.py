@@ -7,12 +7,12 @@ from google.protobuf import json_format
 import grpc
 from . import proto
 
-from unicon.sshutils import sshtunnel
 
 try:
     from pyats.log.utils import banner
     from pyats.connections import BaseConnection
     from pyats.utils.secret_strings import to_plaintext
+    from unicon.sshutils import sshtunnel
 except ImportError:
     # Standalone without pyats install
     class BaseConnection:
@@ -30,6 +30,7 @@ except ImportError:
 
     def to_plaintext(string):
         return string
+
 
 # create a logger for this module
 log = logging.getLogger(__name__)
