@@ -226,9 +226,10 @@ class Gnmi(BaseConnection):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device = kwargs.get('device')
-        dev_args = self.connection_info
-        if dev_args.get('protocol', '') != 'gnmi':
-            msg = 'Invalid protocol {0}'.format(dev_args.get('protocol', ''))
+        self.dev_args = self.connection_info
+        print(f'XAV001: self.dev_args  = {self.dev_args}')
+        if self.dev_args.get('protocol', '') != 'gnmi':
+            msg = 'Invalid protocol {0}'.format(self.dev_args.get('protocol', ''))
             raise TypeError(msg)
 
         self.active_notifications = {}
@@ -238,6 +239,30 @@ class Gnmi(BaseConnection):
         self.channel = None
         self.results = deque()
         self.metadata = None
+        self.connect()
+
+    @property
+    def connected(self):
+        """Return True if session is connected."""
+        return self.service
+
+    @property
+    def gnmi(self):
+        """Helper method to keep backwrads compatibility.
+
+        Returns:
+            Gnmi: self
+        """
+        return self
+
+    def connect(self):
+        """Connect to device using gNMI and get capabilities.
+
+        Raises:
+            gNMIException: No gNMI capabilities returned by device.
+        """
+        print('XAV002: really connect in def connect()')
+        dev_args = self.dev_args
         username = dev_args.get('username', '')
         password = dev_args.get('password', '')
 
@@ -337,26 +362,7 @@ class Gnmi(BaseConnection):
 
         self.service = proto.gnmi_pb2_grpc.gNMIStub(self.channel)
 
-    @property
-    def connected(self):
-        """Return True if session is connected."""
-        return self.service
 
-    @property
-    def gnmi(self):
-        """Helper method to keep backwrads compatibility.
-
-        Returns:
-            Gnmi: self
-        """
-        return self
-
-    def connect(self):
-        """Connect to device using gNMI and get capabilities.
-
-        Raises:
-            gNMIException: No gNMI capabilities returned by device.
-        """
         resp = self.capabilities()
         if resp:
             log.info('\ngNMI version: {0} supported encodings: {1}\n\n'.format(
