@@ -239,7 +239,6 @@ class Gnmi(BaseConnection):
         self.channel = None
         self.results = deque()
         self.metadata = None
-        self.connect()
 
     @property
     def connected(self):
