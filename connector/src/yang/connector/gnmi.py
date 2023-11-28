@@ -227,7 +227,6 @@ class Gnmi(BaseConnection):
         super().__init__(*args, **kwargs)
         self.device = kwargs.get('device')
         self.dev_args = self.connection_info
-        print(f'XAV001: self.dev_args  = {self.dev_args}')
         if self.dev_args.get('protocol', '') != 'gnmi':
             msg = 'Invalid protocol {0}'.format(self.dev_args.get('protocol', ''))
             raise TypeError(msg)
@@ -260,7 +259,6 @@ class Gnmi(BaseConnection):
         Raises:
             gNMIException: No gNMI capabilities returned by device.
         """
-        print('XAV002: really connect in def connect()')
         dev_args = self.dev_args
         username = dev_args.get('username', '')
         password = dev_args.get('password', '')
