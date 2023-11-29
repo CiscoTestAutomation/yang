@@ -265,6 +265,10 @@ class Gnmi(BaseConnection):
             if not username or not password:
                 raise KeyError('No credentials found for gNMI testbed')
         password = to_plaintext(password)
+        # If we have a proxy server we will use that for connecting using sshtunnel
+        if not 'sshtunnel' in dev_args and self.device.testbed.servers.get('proxy'):
+            self.device.api.convert_server_to_linux_device('proxy')
+            dev_args.setdefault('sshtunnel', {}).setdefault('host', 'proxy')
         if 'sshtunnel' in dev_args:
             try:
                 tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
