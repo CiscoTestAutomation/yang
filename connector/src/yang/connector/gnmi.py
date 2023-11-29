@@ -246,7 +246,7 @@ class Gnmi(BaseConnection):
 
     @property
     def gnmi(self):
-        """Helper method to keep backwrads compatibility.
+        """Helper method to keep backwards compatibility.
 
         Returns:
             Gnmi: self
