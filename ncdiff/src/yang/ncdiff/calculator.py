@@ -385,6 +385,9 @@ class BaseCalculator(object):
             instanceid = InstanceIdentifier(self.device, node)
             return instanceid.default
         else:
+            if schema_node.get("type") == "container":
+                # prevent whitespace in container to cause problems
+                return None
             return node.text
 
 
