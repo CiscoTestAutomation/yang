@@ -595,3 +595,454 @@ flow monitor eta-mon
         self.assertEqual(running_diff.diff_reverse, None)
         self.assertEqual(running_diff.cli, '')
         self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_cli_service_template_1(self):
+        config_1 = """
+login on-success log
+!
+flow monitor eta-mon
+flow monitor meraki_monitor
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record
+flow monitor meraki_monitor_ipv6
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record_ipv6
+!
+access-session mac-move deny
+!
+crypto pki trustpoint SLA-TrustPoint
+ enrollment pkcs12
+ revocation-check crl
+ hash sha256
+!
+service-template DEFAULT_LINKSEC_POLICY_MUST_SECURE
+  linksec policy must-secure
+service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+  linksec policy should-secure
+service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
+  voice vlan
+service-template DEFAULT_CRITICAL_DATA_TEMPLATE
+service-template webauth-global-inactive
+  inactivity-timer 3600
+service-template eap-seen
+service-template aaa-unreachable-flag
+service-template bounce-port-flag
+service-template secure-connect-ap-aaa-down
+service-template secure-connect-break-flag
+service-template secure-connect-failed-flag
+service-template secure-connect-in-progress-flag
+service-template secure-connect-success-flag
+        """
+        config_2 = """
+login on-success log
+!
+flow monitor meraki_monitor
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record
+flow monitor meraki_monitor_ipv6
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record_ipv6
+flow monitor eta-mon
+!
+crypto pki trustpoint SLA-TrustPoint
+ enrollment pkcs12
+ revocation-check crl
+ hash sha256
+!
+service-template DEFAULT_CRITICAL_DATA_TEMPLATE
+service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
+  voice vlan
+  aaa bbb ccc
+service-template DEFAULT_LINKSEC_POLICY_MUST_SECURE
+  linksec policy must-secure
+service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+  linksec policy should-secure
+service-template aaa-unreachable-flag
+service-template bounce-port-flag
+service-template eap-seen
+service-template secure-connect-ap-aaa-down
+service-template secure-connect-break-flag
+service-template secure-connect-failed-flag
+service-template secure-connect-in-progress-flag
+service-template secure-connect-success-flag
+service-template webauth-global-inactive
+  inactivity-timer 3600
+        """
+        expected_diff = """
+- access-session mac-move deny
+  service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
++   aaa bbb ccc
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertTrue(running_diff)
+        actual_diff = str(running_diff).strip()
+        expected_diff = expected_diff.strip()
+        actual_lines = actual_diff.split('\n')
+        expected_lines = expected_diff.split('\n')
+        self.assertEqual(len(actual_lines), len(expected_lines))
+        for actual_line, expected_line in zip(actual_lines, expected_lines):
+            self.assertEqual(actual_line.strip(), expected_line.strip())
+
+    def test_cli_service_template_2(self):
+        config_1 = """
+login on-success log
+!
+flow monitor eta-mon
+flow monitor meraki_monitor
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record
+flow monitor meraki_monitor_ipv6
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record_ipv6
+!
+crypto pki trustpoint SLA-TrustPoint
+ enrollment pkcs12
+ revocation-check crl
+ hash sha256
+!
+service-template DEFAULT_LINKSEC_POLICY_MUST_SECURE
+  linksec policy must-secure
+service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+  linksec policy should-secure
+service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
+  voice vlan
+service-template DEFAULT_CRITICAL_DATA_TEMPLATE
+service-template webauth-global-inactive
+  inactivity-timer 3600
+service-template eap-seen
+service-template aaa-unreachable-flag
+service-template bounce-port-flag
+service-template secure-connect-ap-aaa-down
+service-template secure-connect-break-flag
+service-template secure-connect-failed-flag
+service-template secure-connect-in-progress-flag
+service-template secure-connect-success-flag
+        """
+        config_2 = """
+login on-success log
+!
+flow monitor meraki_monitor
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record
+flow monitor meraki_monitor_ipv6
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record_ipv6
+flow monitor eta-mon
+!
+crypto pki trustpoint SLA-TrustPoint
+ enrollment pkcs12
+ revocation-check crl
+ hash sha256
+!
+service-template DEFAULT_CRITICAL_DATA_TEMPLATE
+service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
+  voice vlan
+service-template DEFAULT_LINKSEC_POLICY_MUST_SECURE
+  linksec policy must-secure
+service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+  linksec policy should-secure
+service-template aaa-unreachable-flag
+service-template bounce-port-flag
+service-template eap-seen
+service-template secure-connect-ap-aaa-down
+service-template secure-connect-break-flag
+service-template secure-connect-failed-flag
+service-template secure-connect-in-progress-flag
+service-template secure-connect-success-flag
+service-template webauth-global-inactive
+  inactivity-timer 3600
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_cli_service_template_3(self):
+        config_1 = """
+login on-success log
+!
+flow monitor eta-mon
+flow monitor meraki_monitor
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record
+flow monitor meraki_monitor_ipv6
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record_ipv6
+!
+access-session mac-move deny
+!
+crypto pki trustpoint SLA-TrustPoint
+ enrollment pkcs12
+ revocation-check crl
+ hash sha256
+!
+service-template DEFAULT_LINKSEC_POLICY_MUST_SECURE
+  linksec policy must-secure
+service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+  linksec policy should-secure
+service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
+  voice vlan
+service-template DEFAULT_CRITICAL_DATA_TEMPLATE
+service-template webauth-global-inactive
+  inactivity-timer 3600
+service-template eap-seen
+service-template aaa-unreachable-flag
+service-template bounce-port-flag
+service-template secure-connect-ap-aaa-down
+service-template secure-connect-break-flag
+service-template secure-connect-failed-flag
+service-template secure-connect-in-progress-flag
+service-template secure-connect-success-flag
+        """
+        config_2 = """
+login on-success log
+!
+flow monitor meraki_monitor
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record
+flow monitor meraki_monitor_ipv6
+  exporter meraki_exporter
+  exporter customer_exporter
+  record meraki_record_ipv6
+flow monitor eta-mon
+!
+crypto pki trustpoint SLA-TrustPoint
+ enrollment pkcs12
+ revocation-check crl
+ hash sha256
+!
+service-template DEFAULT_CRITICAL_DATA_TEMPLATE
+service-template DEFAULT_CRITICAL_VOICE_TEMPLATE_NEW
+  voice vlan
+service-template DEFAULT_LINKSEC_POLICY_MUST_SECURE
+  linksec policy must-secure
+service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+  linksec policy should-secure
+service-template aaa-unreachable-flag
+service-template bounce-port-flag
+service-template eap-seen
+service-template secure-connect-ap-aaa-down
+service-template secure-connect-break-flag
+service-template secure-connect-failed-flag
+service-template secure-connect-in-progress-flag
+service-template secure-connect-success-flag
+service-template webauth-global-inactive
+  inactivity-timer 3600
+        """
+        expected_diff = """
+- access-session mac-move deny
++ service-template DEFAULT_CRITICAL_VOICE_TEMPLATE_NEW
++   voice vlan
+- service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
+-   voice vlan
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertTrue(running_diff)
+        actual_diff = str(running_diff).strip()
+        expected_diff = expected_diff.strip()
+        actual_lines = actual_diff.split('\n')
+        expected_lines = expected_diff.split('\n')
+        self.assertEqual(len(actual_lines), len(expected_lines))
+        for actual_line, expected_line in zip(actual_lines, expected_lines):
+            self.assertEqual(actual_line.strip(), expected_line.strip())
+
+    def test_cli_aaa_group_server_radius(self):
+        config_1 = """
+aaa group server radius testing-10.5.0.110-1812
+  server name 10.5.0.110_1812_0
+aaa group server radius testing-6.0.0.2-1812
+  server name 6.0.0.2_1812_0
+aaa group server radius radius-group-0
+  server name 6.0.0.2_1812_0
+aaa group server radius radius-group-1
+  server name 10.5.0.110_1812_0
+aaa group server radius radius-group-2
+  server name 10.5.0.110_1812_0
+aaa group server radius radius-group-3
+  server name 10.5.0.110_1812_0
+aaa group server radius testing-10.5.0.110-0
+  server name 10.5.0.110_0_1813
+aaa group server radius radius-group-4
+  server name 10.5.0.110_1812_0
+        """
+        config_2 = """
+aaa group server radius radius-group-0
+  server name 6.0.0.2_1812_0
+aaa group server radius radius-group-1
+  server name 10.5.0.110_1812_0
+aaa group server radius radius-group-2
+  server name 10.5.0.110_1812_0
+aaa group server radius radius-group-3
+  server name 10.5.0.110_1812_0
+aaa group server radius radius-group-4
+  server name 10.5.0.110_1812_0
+aaa group server radius testing-10.5.0.110-0
+  server name 10.5.0.110_0_1813
+aaa group server radius testing-10.5.0.110-1812
+  server name 10.5.0.110_1812_0
+aaa group server radius testing-6.0.0.2-1812
+  server name 6.0.0.2_1812_0
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_service_template_2(self):
+        config_1 = """
+service-template DEFAULT_LINKSEC_POLICY_MUST_SECURE
+  linksec policy must-secure
+service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+  linksec policy should-secure
+service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
+  voice vlan
+service-template DEFAULT_CRITICAL_DATA_TEMPLATE
+service-template webauth-global-inactive
+  inactivity-timer 3600
+service-template eap-seen
+service-template aaa-unreachable-flag
+service-template bounce-port-flag
+service-template secure-connect-ap-aaa-down
+service-template secure-connect-break-flag
+service-template secure-connect-failed-flag
+service-template secure-connect-in-progress-flag
+service-template secure-connect-success-flag
+service-template failed-vlan-2
+  vlan 98
+service-template guest-vlan-0
+  vlan 900
+        """
+        config_2 = """
+service-template DEFAULT_CRITICAL_DATA_TEMPLATE
+service-template DEFAULT_CRITICAL_VOICE_TEMPLATE
+  voice vlan
+service-template DEFAULT_LINKSEC_POLICY_MUST_SECURE
+  linksec policy must-secure
+service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+  linksec policy should-secure
+service-template aaa-unreachable-flag
+service-template bounce-port-flag
+service-template eap-seen
+service-template failed-vlan-2
+  vlan 98
+service-template guest-vlan-0
+  vlan 900
+service-template secure-connect-ap-aaa-down
+service-template secure-connect-break-flag
+service-template secure-connect-failed-flag
+service-template secure-connect-in-progress-flag
+service-template secure-connect-success-flag
+service-template webauth-global-inactive
+  inactivity-timer 3600
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_flow_exporter(self):
+        config_1 = """
+flow exporter meraki_exporter
+  destination 1.1.3.2
+  transport udp 9995
+flow exporter customer_exporter
+  destination 10.7.253.22
+  transport udp 2055
+  export-protocol ipfix
+  option interface-table timeout 3600
+  option exporter-stats timeout 300
+  option application-table timeout 3600
+        """
+        config_2 = """
+flow exporter customer_exporter
+  destination 10.7.253.22
+  transport udp 2055
+  export-protocol ipfix
+  option interface-table timeout 3600
+  option exporter-stats timeout 300
+  option application-table timeout 3600
+flow exporter meraki_exporter
+  destination 1.1.3.2
+  transport udp 9995
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_exporter(self):
+        config_1 = """
+flow monitor meraki_monitor
+  exporter meraki_exporter
+  exporter customer_exporter
+        """
+        config_2 = """
+flow monitor meraki_monitor
+  exporter customer_exporter
+  exporter meraki_exporter
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_username(self):
+        config_1 = """
+username guestshell privilege 0 password 7 03034E0E151B32444B0515
+username priv01 password 7 1209171E045B5D
+        """
+        config_2 = """
+username priv01 password 7 1209171E045B5D
+username guestshell privilege 0 password 7 03034E0E151B32444B0515
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
