@@ -1,5 +1,7 @@
 import os
 import re
+from functools import lru_cache
+
 import logging
 from lxml import etree
 from ncclient import manager, operations, transport, xml_
@@ -7,7 +9,7 @@ from yang.connector import Netconf
 
 from .model import Model, ModelDownloader, ModelCompiler
 from .config import Config
-from .errors import ModelError, ModelMissing
+from .errors import ModelError, ModelMissing, ConfigError
 from .composer import Tag, Composer
 
 # create a logger for this module
@@ -78,6 +80,8 @@ class ModelDevice(Netconf):
                                              hex(id(self)))
 
     @property
+    @lru_cache(maxsize=1)
+    # extremely expensive call, cache
     def namespaces(self):
         if self.compiler is None:
             raise ValueError('please first call scan_models() to build '
@@ -623,23 +627,28 @@ class ModelDevice(Netconf):
             return True
 
         n = Composer(self, config_node)
-        config_path = n.path
-        if ' '.join(config_path) in self.nodes:
-            return self.nodes[' '.join(config_path)]
-        if len(config_path) > 1:
+        path = n.path
+        config_path_str = ' '.join(path)
+        if config_path_str in self.nodes:
+            return self.nodes[config_path_str]
+        if len(path) > 1:
             parent = self.get_schema_node(config_node.getparent())
-            if parent is None:
-                return None
-            else:
-                child = get_child(parent, config_node.tag)
-                if child is not None:
-                    self.nodes[' '.join(config_path)] = child
-                return child
+            child = get_child(parent, config_node.tag)
+            if child is None:
+                raise ConfigError("unable to locate a child '{}' of {} in " \
+                                  "schema tree" \
+                                  .format(config_node.tag,
+                                          self.get_xpath(parent)))
+            self.nodes[config_path_str] = child
+            return child
         else:
             tree = self.models[n.model_name].tree
             child = get_child(tree, config_node.tag)
-            if child is not None:
-                self.nodes[' '.join(config_path)] = child
+            if child is None:
+                raise ConfigError("unable to locate a root '{}' in {} schema " \
+                                  "tree" \
+                                  .format(config_node.tag, n.model_name))
+            self.nodes[config_path_str] = child
             return child
 
     def get_model_name(self, node):
@@ -825,6 +834,42 @@ class ModelDevice(Netconf):
                 return default_ns, format_tag(convert(tag_ns), tag_name)
         else:
             raise ValueError("unknown value '{}' in class Tag".format(dst[1]))
+
+    def convert_ns(self, ns, src=Tag.NAMESPACE, dst=Tag.NAME):
+        '''convert_ns
+
+        High-level api: Convert from one namespace format, model name, model
+        prefix or model URL, to another namespace format.
+
+        Parameters
+        ----------
+
+        ns : `str`
+            A namespace, which can be model name, model prefix or model URL.
+
+        src : `int`
+            An int constant defined in class Tag, specifying the namespace
+            format of ns.
+
+        dst : `int`
+            An int constant defined in class Tag, specifying the namespace
+            format of return value.
+
+        Returns
+        -------
+
+        str
+            Converted namespace in a format specified by dst.
+        '''
+
+        matches = [t for t in self.namespaces if t[src] == ns]
+        if len(matches) == 0:
+            raise ValueError("{} '{}' is not claimed by this device" \
+                             .format(Tag.STR[src], ns))
+        if len(matches) > 1:
+            raise ValueError("more than one {} '{}' are claimed by this " \
+                             "device".format(Tag.STR[src], ns))
+        return matches[0][dst]
 
     def _get_ns(self, reply):
         '''_get_ns
