@@ -571,7 +571,7 @@ class ModelDevice(Netconf):
         -------
 
         Element
-            A schema node, or None when nothing can be found.
+            A schema node.
 
         Raises
         ------
@@ -579,12 +579,15 @@ class ModelDevice(Netconf):
         ModelError
             If identifier is not unique in a namespace.
 
+        ConfigError
+            when nothing can be found.
+
 
         Code Example::
 
-            >>> device.nc.load_model('openconfig-interfaces')
-            >>> reply = device.nc.get_config(models='openconfig-interfaces')
-            >>> config = device.nc.extract_config(reply)
+            >>> m.load_model('openconfig-interfaces')
+            >>> reply = m.get_config(models='openconfig-interfaces')
+            >>> config = m.extract_config(reply)
             >>> print(config)
             ...
             >>> config.ns
@@ -592,25 +595,25 @@ class ModelDevice(Netconf):
             >>> config_nodes = config.xpath('/nc:config/oc-if:interfaces/oc-if:interface[oc-if:name="GigabitEthernet0/0"]')
             >>> config_node = config_nodes[0]
             >>>
-            >>> device.nc.get_schema_node(config_node)
+            >>> m.get_schema_node(config_node)
             <Element {http://openconfig.net/yang/interfaces}interface at 0xf11acfcc>
             >>>
         '''
 
         def get_child(parent, tag):
-            children = [i for i in parent.iter(tag=tag)
-                        if i.attrib['type'] != 'choice' and
-                        i.attrib['type'] != 'case' and
-                        is_parent(parent, i)]
+            children = [i for i in parent.iter(tag=tag) \
+                        if i.attrib['type'] != 'choice' and \
+                           i.attrib['type'] != 'case' and \
+                           is_parent(parent, i)]
             if len(children) == 1:
                 return children[0]
             elif len(children) > 1:
                 if parent.getparent() is None:
-                    raise ModelError("more than one root has tag '{}'"
+                    raise ModelError("more than one root has tag '{}'" \
                                      .format(tag))
                 else:
-                    raise ModelError("node {} has more than one child with "
-                                     "tag '{}'"
+                    raise ModelError("node {} has more than one child with " \
+                                     "tag '{}'" \
                                      .format(self.get_xpath(parent), tag))
             else:
                 return None
