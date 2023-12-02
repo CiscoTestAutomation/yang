@@ -1,6 +1,5 @@
 import os
 import re
-from functools import lru_cache
 
 import logging
 from lxml import etree
@@ -73,6 +72,7 @@ class ModelDevice(Netconf):
         self.nodes = {}
         self.compiler = None
         self._models_loadable = None
+        self.namespaces_cache = None
 
     def __repr__(self):
         return '<{}.{} object at {}>'.format(self.__class__.__module__,
@@ -80,9 +80,10 @@ class ModelDevice(Netconf):
                                              hex(id(self)))
 
     @property
-    @lru_cache(maxsize=1)
     # extremely expensive call, cache
     def namespaces(self):
+        if self.namespaces_cache is not None:
+            return self.namespaces_cache
         if self.compiler is None:
             raise ValueError('please first call scan_models() to build '
                              'up supported namespaces of a device')
@@ -92,6 +93,7 @@ class ModelDevice(Netconf):
                 device_namespaces.append((m.get('id'),
                                           m.get('prefix'),
                                           m.findtext('namespace')))
+            self.namespaces_cache = device_namespaces
             return device_namespaces
 
     @property
