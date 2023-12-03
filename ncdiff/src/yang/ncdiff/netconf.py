@@ -211,12 +211,22 @@ class NetconfCalculator(BaseCalculator):
         None
 
         '''
+        # Initialize current_depth as -1
         current_depth = -1
+
+        # Create a list with the root node and its depth (0)
         nodes_to_visit = [(root, current_depth + 1)]
+
+        # While there are nodes to visit
         while nodes_to_visit:
+            # Pop the first node and its depth from the list
             node, current_depth = nodes_to_visit.pop(0)
+
+            # If the current node's depth matches the specified depth
             if current_depth == depth:
+                # Add the attribute to the node
                 node.set(attribute, value)
+            # Add the attribute to the node
             nodes_to_visit.extend((child, current_depth + 1) for child in node)
 
     def get_config_replace(self, node_self, node_other):
