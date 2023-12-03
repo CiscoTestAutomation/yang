@@ -127,7 +127,7 @@ class NetconfCalculator(BaseCalculator):
         'delete' or 'remove'.
 
     diff_type : `str`
-        Choice of 'minimum' or 'replace'. This value has impact on attribute
+        Choice of 'minimum' 'minimum-replace', or 'replace'. This value has impact on attribute
         nc. In general, there are two options to construct nc. The first
         option is to find out minimal changes between config_src and
         config_dst. Then attribute nc will reflect what needs to be modified.
@@ -185,7 +185,39 @@ class NetconfCalculator(BaseCalculator):
             self.get_config_replace(ele1, ele2)
         else:
             self.node_sub(ele1, ele2, depth=0)
+        # add attribute at depth if diff_type is 'minimum-replace'
+        if self.diff_type == 'minimum-replace':
+            self.add_attribute_at_depth(ele1, self.replace_depth+1, 'operation', 'replace')
         return ele1
+
+    def add_attribute_at_depth(self, root, depth, attribute, value):
+        '''add_attribute_at_depth
+
+        High-level api: Add an attribute to all nodes at a specified depth.
+
+        Parameters
+        ----------
+        root : `Element`
+            The root of a config tree.
+        depth : `int`
+            The depth of nodes to be added with an attribute.
+        attribute : `str`
+            The name of the attribute to be added.
+        value : `str`
+            The value of the attribute to be added.
+
+        Returns
+        -------
+        None
+
+        '''
+        current_depth = -1
+        nodes_to_visit = [(root, current_depth + 1)]
+        while nodes_to_visit:
+            node, current_depth = nodes_to_visit.pop(0)
+            if current_depth == depth:
+                node.set(attribute, value)
+            nodes_to_visit.extend((child, current_depth + 1) for child in node)
 
     def get_config_replace(self, node_self, node_other):
         '''get_config_replace

@@ -487,7 +487,7 @@ class ConfigDelta(object):
         'delete' or 'remove'.
 
     diff_type : `str`
-        Choice of 'minimum' or 'replace'. This value has impact on attribute
+        Choice of 'minimum', 'minimum-replace' or 'replace'. This value has impact on attribute
         nc. In general, there are two options to construct nc. The first
         option is to find out minimal changes between config_src and
         config_dst. Then attribute nc will reflect what needs to be modified.
