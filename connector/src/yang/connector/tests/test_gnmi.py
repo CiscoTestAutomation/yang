@@ -33,6 +33,30 @@ class TestGnmi(unittest.TestCase):
             device.connect(alias='gnmi', via='Gnmi')
             mock_grpc.assert_called_with('1.2.3.4:830')
 
+    def test_re_connect(self):
+
+        yaml = \
+            'devices:\n' \
+            '    dummy:\n' \
+            '        type: dummy_device\n' \
+            '        connections:\n' \
+            '            Gnmi:\n' \
+            '                class:  yang.connector.Gnmi\n' \
+            '                protocol: gnmi\n' \
+            '                ip : "1.2.3.4"\n' \
+            '                port: 830\n' \
+            '                username: admin\n' \
+            '                password: admin\n'
+
+        testbed = loader.load(yaml)
+        device = testbed.devices['dummy']
+        with patch('yang.connector.gnmi.grpc.insecure_channel') as mock_grpc:
+            device.connect(alias='gnmi', via='Gnmi')
+            mock_grpc.assert_called_with('1.2.3.4:830')
+            device.disconnect(alias='gnmi', via='Gnmi')
+            device.connect(alias='gnmi', via='Gnmi')
+            mock_grpc.assert_called_with('1.2.3.4:830')
+
     def test_connect_proxy(self):
         yaml = \
             'devices:\n' \
