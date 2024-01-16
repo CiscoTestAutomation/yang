@@ -66,7 +66,6 @@ class ModelDevice(Netconf):
         '''
         __init__ instantiates a ModelDevice instance.
         '''
-
         Netconf.__init__(self, *args, **kwargs)
         self.models = {}
         self.nodes = {}

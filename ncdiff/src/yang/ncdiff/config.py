@@ -501,7 +501,7 @@ class ConfigDelta(object):
         module are level 0, their children are level 1, and so on so forth.
         The default value of replace_depth is 0.
     
-    replace_xpath : `str`
+    replace_xpath : `str` or `list`
         Specify the xpath of the node to be replaced when diff_type is
         'minimum-replace'. The default value of replace_xpath is None.
     '''

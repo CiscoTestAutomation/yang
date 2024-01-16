@@ -142,7 +142,7 @@ class NetconfCalculator(BaseCalculator):
         module are level 0, their children are level 1, and so on so forth.
         The default value of replace_depth is 0.
     
-    replace_xpath: `str`
+    replace_xpath: `str` or `list
         Specify the xpath of the node to be replaced when diff_type is
         'minimum-replace'. The default value of replace_xpath is None.
     '''
@@ -196,7 +196,11 @@ class NetconfCalculator(BaseCalculator):
         if self.diff_type == 'minimum-replace' and self.replace_xpath:
             namespaces = self.device._get_ns(ele1)
             logger.debug("Namespaces:\n{}".format(json.dumps(namespaces, indent=2)))
-            self.add_attribute_by_xpath(ele1, self.replace_xpath, 'operation', 'replace', namespaces)
+            if isinstance(self.replace_xpath, list):
+                for xpath in self.replace_xpath:
+                    self.add_attribute_by_xpath(ele1, xpath, 'operation', 'replace', namespaces)
+            else:
+                self.add_attribute_by_xpath(ele1, self.replace_xpath, 'operation', 'replace', namespaces)
         elif self.diff_type == 'minimum-replace':
             self.add_attribute_at_depth(ele1, self.replace_depth+1, 'operation', 'replace')
         return ele1
