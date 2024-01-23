@@ -180,7 +180,7 @@ setup(
     # package dependencies
     install_requires =  [
         'paramiko >= 1.15.1',
-        'lxml >= 3.3.0',
+        'lxml >= 3.3.0, <5.0.0',
         'ncclient >= 0.6.6',
         'grpcio',
         'protobuf'

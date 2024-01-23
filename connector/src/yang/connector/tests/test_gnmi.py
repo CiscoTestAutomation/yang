@@ -51,9 +51,9 @@ class TestGnmi(unittest.TestCase):
         testbed = loader.load(yaml)
         device = testbed.devices['dummy']
         with patch('yang.connector.gnmi.grpc.insecure_channel') as mock_grpc:
-            device.connect(alias='gnmi', via='Gnmi')
+            device.connect()
             mock_grpc.assert_called_with('1.2.3.4:830')
-            device.disconnect(alias='gnmi', via='Gnmi')
+            device.disconnect()
             device.connect(alias='gnmi', via='Gnmi')
             mock_grpc.assert_called_with('1.2.3.4:830')
 
@@ -136,11 +136,11 @@ class TestGnmi(unittest.TestCase):
     def test_xpath_to_path_elem(self):
         """Test converting Genie content data to cisco_gnmi format."""
         modules, message, origin = xpath_util.xml_path_to_path_elem(self.request)
-        self.assertEquals(modules, {'oc-acl': 'openconfig-acl'})
-        self.assertEquals(message.get('delete'), [])
-        self.assertEquals(message.get('get'), [])
-        self.assertEquals(message.get('replace'), [])
-        self.assertEquals(
+        self.assertEqual(modules, {'oc-acl': 'openconfig-acl'})
+        self.assertEqual(message.get('delete'), [])
+        self.assertEqual(message.get('get'), [])
+        self.assertEqual(message.get('replace'), [])
+        self.assertEqual(
             message.get('update'),
             [
                 {'/acl/acl-sets/acl-set': {'name': 'testacl'}},
@@ -152,7 +152,7 @@ class TestGnmi(unittest.TestCase):
                 {'/acl/acl-sets/acl-set[name="testacl"][type="ACL_IPV4"]/acl-entries/acl-entry[sequence-id="10"]/actions/config': {'forwarding-action': 'DROP'}}
             ]
         )
-        self.assertEquals(origin, 'openconfig')
+        self.assertEqual(origin, 'openconfig')
 
     def test_get_prefix(self):
         """Test creating a prefix Path gNMI class."""
