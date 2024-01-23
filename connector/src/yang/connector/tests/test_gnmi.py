@@ -51,7 +51,7 @@ class TestGnmi(unittest.TestCase):
         testbed = loader.load(yaml)
         device = testbed.devices['dummy']
         with patch('yang.connector.gnmi.grpc.insecure_channel') as mock_grpc:
-            device.connect(alias='gnmi', via='Gnmi')
+            device.connect()
             mock_grpc.assert_called_with('1.2.3.4:830')
             device.disconnect()
             device.connect(alias='gnmi', via='Gnmi')
