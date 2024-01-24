@@ -2,9 +2,12 @@ import logging
 import socket
 import configparser
 import subprocess
+import re
 
 from pyats.easypy import runtime
 from unicon.bases.connection import Connection
+from unicon.sshutils import sshtunnel
+
 
 from . import Grpc
 
@@ -35,7 +38,7 @@ class Grpc(Grpc):
         The network device is then connected via Unicon CLI and the outbound telemetry process that corresponds
         to the booted telegraf process is configured on the device, with the CLI connection remaining open
         """
-
+        breakpoint()
         # Allocate a random available port to localhost
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
             grpc_socket.bind(('0.0.0.0', 0))
@@ -109,13 +112,31 @@ class Grpc(Grpc):
 
         # exit context manager to release port
         # spawn telegraf/pipeline using config
-        if subprocess.run(['which', 'telegraf']).returncode == 0:
-            self.transport_process = subprocess.Popen(f"telegraf -config '{self.config_file}'", shell=True)
-            # log port
-            log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
-        else:
-            raise OSError('Telegraf is not installed')
-
+        # if subprocess.run(['which', 'telegraf']).returncode == 0:
+        #     self.transport_process = subprocess.Popen(f"telegraf -config '{self.config_file}'", shell=True)
+        #     # log port
+        #     log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
+        # else:
+        #     raise OSError('Telegraf is not installed')
+        # 
+        if self.proxy:
+            pattern = re.compile(r'^(.*)src (?P<route>[0-9.]+)(.*)$')
+            # connect to proxy 
+            dev_proxy = self.device.testbed.devices.get(self.proxy.get('host'))     
+            if not dev_proxy:
+                log.error(f'there is no proxy device{self.proxy.get("host")}')
+            dev_proxy.connect()
+            try:
+                remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=dev_proxy.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
+            except Exception as e:
+                log.error({e})
+            config_port = dev_proxy.api.socat_relay('127.0.0.1', remote_tunnel_port)
+            mgmt_ip = self.device.get('management').get('gateway').get('ipv4')
+            if mgmt_ip:
+                route_output = dev_proxy.execute(f'ip route get {mgmt_ip}')
+                route_match = pattern.match(route_output)
+                if route_match:
+                    proxy_ip = route_match.groupdict().get('route')
         if self.telemetry_autoconfigure:
             # check if there is an existing unicon connection
             active_connection = None
