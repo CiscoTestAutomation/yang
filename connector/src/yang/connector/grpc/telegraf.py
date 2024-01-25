@@ -38,7 +38,6 @@ class Grpc(Grpc):
         The network device is then connected via Unicon CLI and the outbound telemetry process that corresponds
         to the booted telegraf process is configured on the device, with the CLI connection remaining open
         """
-        breakpoint()
         # Allocate a random available port to localhost
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
             grpc_socket.bind(('0.0.0.0', 0))
@@ -109,34 +108,39 @@ class Grpc(Grpc):
                     with open(self.config_file, 'w') as f:
                         log.info(f"Updating {self.config_file}")
                         config.write(f)
-
         # exit context manager to release port
         # spawn telegraf/pipeline using config
-        # if subprocess.run(['which', 'telegraf']).returncode == 0:
-        #     self.transport_process = subprocess.Popen(f"telegraf -config '{self.config_file}'", shell=True)
-        #     # log port
-        #     log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
-        # else:
-        #     raise OSError('Telegraf is not installed')
+        if subprocess.run(['which', 'telegraf']).returncode == 0:
+            self.transport_process = subprocess.Popen(f"telegraf -config '{self.config_file}'", shell=True)
+            # log port
+            log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
+        else:
+            raise OSError('Telegraf is not installed')
         # 
         if self.proxy:
-            pattern = re.compile(r'^(.*)src (?P<route>[0-9.]+)(.*)$')
             # connect to proxy 
-            dev_proxy = self.device.testbed.devices.get(self.proxy.get('host'))     
-            if not dev_proxy:
-                log.error(f'there is no proxy device{self.proxy.get("host")}')
-            dev_proxy.connect()
+            proxy_dev = self.device.testbed.devices.get(self.proxy.get('host'))     
+            if not proxy_dev:
+                raise(f'there is no proxy device{self.proxy.get("host")} in the testbed.')
+            proxy_dev.connect()
             try:
-                remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=dev_proxy.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
+                # add a remote tunnel
+                remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=proxy_dev.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
             except Exception as e:
-                log.error({e})
-            config_port = dev_proxy.api.socat_relay('127.0.0.1', remote_tunnel_port)
+                log.error(f'Coud not add a remote tunnel because of{e}')
+                raise e
+            # create a dynamic port on the proxy using socat for redirecting traffic to the port on remote tunnel 
+            config_port = proxy_dev.api.socat_relay('127.0.0.1', remote_tunnel_port)
             mgmt_ip = self.device.get('management').get('gateway').get('ipv4')
             if mgmt_ip:
-                route_output = dev_proxy.execute(f'ip route get {mgmt_ip}')
+                route_output = proxy_dev.execute(f'ip route get {mgmt_ip}')
+                pattern = re.compile(r'.*src (?P<route>[0-9.]+).*')
                 route_match = pattern.match(route_output)
                 if route_match:
                     proxy_ip = route_match.groupdict().get('route')
+                    allocated_port = config_port
+            else:
+                raise('There is no ipv4 defined under management gateway ')
         if self.telemetry_autoconfigure:
             # check if there is an existing unicon connection
             active_connection = None
@@ -156,7 +160,7 @@ class Grpc(Grpc):
 
             # run configurations while ensuring that it is using a unicon default connection
             with self.device.temp_default_alias(active_connection):
-                local_ip = self.transporter_ip or self.device.api.get_local_ip()
+                local_ip = self.transporter_ip or proxy_ip or self.device.api.get_local_ip()
                 self.device.api.configure_netconf_yang()
                 self.device.api.configure_telemetry_ietf_parameters(self.telemetry_subscription_id,
                                                                     "yang-push", local_ip, allocated_port, "grpc-tcp")
