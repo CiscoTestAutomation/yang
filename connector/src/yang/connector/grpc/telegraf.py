@@ -38,6 +38,7 @@ class Grpc(Grpc):
         The network device is then connected via Unicon CLI and the outbound telemetry process that corresponds
         to the booted telegraf process is configured on the device, with the CLI connection remaining open
         """
+        breakpoint()
         # Allocate a random available port to localhost
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as grpc_socket:
             grpc_socket.bind(('0.0.0.0', 0))
@@ -117,21 +118,30 @@ class Grpc(Grpc):
         else:
             raise OSError('Telegraf is not installed')
         # 
+        breakpoint()
+        proxy_ip = None
         if self.proxy:
             # connect to proxy 
-            proxy_dev = self.device.testbed.devices.get(self.proxy.get('host'))     
-            if not proxy_dev:
-                raise(f'there is no proxy device{self.proxy.get("host")} in the testbed.')
+            try:
+                proxy_dev = self.device.testbed.devices[self.proxy]
+            except:
+                log.info('The proxy is not defined in the devices. searching the servers')
+                try:
+                    proxy_dev = self.device.api.convert_server_to_linux_device(self.proxy)
+                except Exception as e:
+                    log.error(f'Could not conver server to device because of {e}')
+                    raise e
+            #connect to proxy
             proxy_dev.connect()
             try:
-                # add a remote tunnel
+                # add a remote tunnel for the allocated port on the execution host
                 remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=proxy_dev.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
             except Exception as e:
-                log.error(f'Coud not add a remote tunnel because of{e}')
+                log.error(f'Coud not add a remote tunnel because of {e}')
                 raise e
             # create a dynamic port on the proxy using socat for redirecting traffic to the port on remote tunnel 
             config_port = proxy_dev.api.socat_relay('127.0.0.1', remote_tunnel_port)
-            mgmt_ip = self.device.get('management').get('gateway').get('ipv4')
+            mgmt_ip = str(self.device.management.get('gateway').get('ipv4'))
             if mgmt_ip:
                 route_output = proxy_dev.execute(f'ip route get {mgmt_ip}')
                 pattern = re.compile(r'.*src (?P<route>[0-9.]+).*')
@@ -160,16 +170,19 @@ class Grpc(Grpc):
 
             # run configurations while ensuring that it is using a unicon default connection
             with self.device.temp_default_alias(active_connection):
-                local_ip = self.transporter_ip or proxy_ip or self.device.api.get_local_ip()
+                local_ip = self.transporter_ip or self.device.api.get_local_ip()
+                reciever_ip = proxy_ip or local_ip
                 self.device.api.configure_netconf_yang()
                 self.device.api.configure_telemetry_ietf_parameters(self.telemetry_subscription_id,
                                                                     "yang-push", local_ip, allocated_port, "grpc-tcp")
 
             self.device.connections['grpc'].update({
-                'transporter_ip': local_ip,
+                'transporter_ip': reciever_ip,
                 'transporter_port': allocated_port
             })
-            log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
+            if self.proxy:
+                log.info(f"Using proxy {proxy_dev} for connection")
+            log.info(f"Started gRPC inbound server on {reciever_ip}:{allocated_port}")
         else:
             self.device.connections['grpc'].update({
                 'transporter_ip': "0.0.0.0",

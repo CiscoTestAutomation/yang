@@ -2,6 +2,7 @@ import os
 import unittest
 import subprocess
 from unicon.plugins.tests.mock.mock_device_iosxe import MockDeviceTcpWrapperIOSXE
+from unicon.mock.mock_device import MockDeviceSSHWrapper
 
 from pyats.topology import loader
 from time import sleep
@@ -15,67 +16,54 @@ class TestGrpc(unittest.TestCase):
     def setUpClass(cls) -> None:
         if subprocess.run(['which', 'telegraf']).returncode == 0:
             cls.telegraf_installed = True
+        cls.tunnel_host_md = MockDeviceSSHWrapper(device_os='linux', port=0, state='exec')
+        cls.tunnel_host_md.start()
 
     def setUp(self) -> None:
-        self.md = MockDeviceTcpWrapperIOSXE(port=45678, state='enable', mock_data_dir='mock_devices',
-                                            hostname='router-1')
-        self.md.start()
+        # self.md = MockDeviceTcpWrapperIOSXE(port=0, state='enable', mock_data_dir='mock_devices',
+        #                                     hostname='router-1')
+        # self.md.start()
+        # self.tunnel_host_md = MockDeviceSSHWrapper(device_os='linux', port=0, state='exec')
+        # self.tunnel_host_md.start()
+
         self.tb_yaml = f"""
 devices:
-  router-1:
-    alias: router-1
+  proxy:
+    os: linux
+    type: server
     connections:
-      a:
-        ip: 127.0.0.1
-        port: {self.md.ports[0]}
-        protocol: telnet
       defaults:
         class: unicon.Unicon
-      grpc:
-        class: yang.connector.Grpc
-        protocol: grpc
-        transporter_ip: 127.0.0.1
-        transporter_port: 56789
-    credentials:
-        default:
-            username: user
-            password: cisco123
-    os: iosxe
-    platform: isr4k
+      ssh:
+        protocol: ssh
+        ip: 127.0.0.1
+        port: {self.tunnel_host_md.ports[0]}
+        ssh_options: -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
         """
 
     def tearDown(self) -> None:
         self.md.stop()
+        self.tunnel_host_md.stop()
         os.remove('./transporter.conf')
         os.remove('./mdt.json')
 
     def test_connect_without_autoconfigure(self):
         tb_yaml = f"""
         devices:
-          router-1:
-            alias: router-1
+          proxy:
+            os: linux
+            type: server
             connections:
-              a:
-                ip: 127.0.0.1
-                port: {self.md.ports[0]}
-                protocol: telnet
               defaults:
                 class: unicon.Unicon
-              grpc:
-                class: yang.connector.Grpc
-                protocol: grpc
-                transporter_ip: 127.0.0.1
-                transporter_port: 56789
-                autoconfigure: False
-            credentials:
-                default:
-                    username: user
-                    password: cisco123
-            os: iosxe
-            platform: isr4k
+              ssh:
+                protocol: ssh
+                ip: 127.0.0.1
+                port: {self.tunnel_host_md.ports[0]}
+                ssh_options: -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
                 """
         testbed = loader.load(tb_yaml)
-
+        breakpoint()
         dev = testbed.devices['router-1']
         dev.connect(via='grpc', alias='grpc')
 
