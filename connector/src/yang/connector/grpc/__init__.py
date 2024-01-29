@@ -92,15 +92,15 @@ class Grpc(BaseConnection):
 
         self.username = dev_args.get('username', '')
         self.password = dev_args.get('password', '')
-        # if not self.username or not self.password:
-        #     credentials = dev_args.get('credentials', '')
-        #     if not credentials:
-        #         raise KeyError("No credentials found for testbed")
-        #     if 'grpc' not in credentials:
-        #         log.info(f"Credentials used from {next(iter(credentials))}")
-        #     grpc_uname_pwd = credentials.get('')
-        #     if not grpc_uname_pwd:
-        #         raise KeyError('No credentials found for gRPC testbed')
+        if not self.username or not self.password:
+            credentials = dev_args.get('credentials', '')
+            if not credentials:
+                raise KeyError("No credentials found for testbed")
+            if 'grpc' not in credentials:
+                log.info(f"Credentials used from {next(iter(credentials))}")
+            grpc_uname_pwd = credentials.get('')
+            if not grpc_uname_pwd:
+                raise KeyError('No credentials found for gRPC testbed')
 
         self.host = dev_args.get('host') or dev_args.get('ip')
 

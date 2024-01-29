@@ -117,8 +117,6 @@ class Grpc(Grpc):
             log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
         else:
             raise OSError('Telegraf is not installed')
-        breakpoint()
-        proxy_ip = None
         if self.proxy:
             # connect to proxy 
             try:
@@ -165,14 +163,15 @@ class Grpc(Grpc):
             # run configurations while ensuring that it is using a unicon default connection
             with self.device.temp_default_alias(active_connection):
                 local_ip = self.transporter_ip or self.device.api.get_local_ip()
-                # the ip for receiving data which will be configured on the device this could be the ip of 
-                # the proxy connected to device or the ip of the execution host or transporter 
-                receiver_ip = proxy_ip or local_ip
                 self.device.api.configure_netconf_yang()
                 if self.proxy:
+                    # the ip for receiving data which will be configured on the device this could be the ip of 
+                    # the proxy connected to device or the ip of the execution host or transporter 
+                    receiver_ip = proxy_ip 
                     self.device.api.configure_telemetry_ietf_parameters(sub_id=self.telemetry_subscription_id, stream="yang-push", receiver_ip=receiver_ip,
                                                                         receiver_port=proxy_port, protocol="grpc-tcp", source_vrf=self.vrf)
                 else:
+                    receiver_ip = local_ip 
                     self.device.api.configure_telemetry_ietf_parameters(sub_id=self.telemetry_subscription_id,stream="yang-push",
                                                                         receiver_ip=receiver_ip, receiver_port=allocated_port, protocol="grpc-tcp", source_vrf=self.vrf)       
 
