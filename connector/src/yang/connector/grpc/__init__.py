@@ -1,5 +1,6 @@
 import logging
 import tempfile
+import ipaddress
 from importlib import import_module
 from shutil import copyfile
 
@@ -71,13 +72,19 @@ class Grpc(BaseConnection):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        breakpoint()
         self.device = kwargs.get('device')
         dev_args = self.connection_info
-        self.proxy = dev_args.get('sshtunnel', {}).get('host')
         self.log = log
         self.log.setLevel(logging.INFO)
-
+        self.proxy = dev_args.get('sshtunnel', {}).get('host')
+        self.access_ip = kwargs.get('transporter_access_ip')
+        self.vrf = self.device.management.get('vrf')
+        if self.access_ip:
+            try:
+                ipv4_address = ipaddress.IPv4Address(self.access_ip)
+            except ipaddress.AddressValueError as e:
+                log.error(' The ip for accessing transporter is wrong')
+                raise e
         protocol = dev_args.get('protocol', 'grpc').lower()
         if protocol != 'grpc':
             msg = f"Invalid protocol {protocol}"
