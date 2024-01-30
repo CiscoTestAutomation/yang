@@ -134,7 +134,7 @@ class Grpc(Grpc):
             remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=proxy_dev.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
             # create a proxy port on the proxy using socat api for redirecting traffic to the port for remote tunnel 
             proxy_port = proxy_dev.api.socat_relay('127.0.0.1', remote_tunnel_port)
-            mgmt_ip = self.source_address or self.device.management.get('address').get('ipv4')
+            mgmt_ip = self.source_address or self.device.management.get('address', {}).get('ipv4')
             if mgmt_ip:
                 route_output = proxy_dev.execute(f'ip route get {proxy_dev.api.get_valid_ipv4_address(mgmt_ip)}')
                 pattern = re.compile(r'.*src (?P<route>[0-9.]+).*')
