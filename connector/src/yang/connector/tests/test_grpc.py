@@ -43,6 +43,10 @@ devices:
         default:
             username: user
             password: cisco123
+    management:
+      address:
+        ipv4: 127.0.0.2
+      interface: Ethernet0
     os: iosxe
     platform: isr4k
         """
@@ -74,6 +78,9 @@ devices:
                 default:
                     username: user
                     password: cisco123
+            management:
+              address:
+                ipv4: 127.0.0.2
             os: iosxe
             platform: isr4k
                 """

@@ -77,14 +77,8 @@ class Grpc(BaseConnection):
         self.log = log
         self.log.setLevel(logging.INFO)
         self.proxy = dev_args.get('sshtunnel', {}).get('host')
-        self.access_ip = kwargs.get('transporter_access_ip')
-        self.vrf = self.device.management.get('vrf')
-        if self.access_ip:
-            try:
-                ipv4_address = ipaddress.IPv4Address(self.access_ip)
-            except ipaddress.AddressValueError as e:
-                log.error(' The ip for accessing transporter is wrong')
-                raise e
+        self.source_address = kwargs.get('source_address')
+        self.vrf = kwargs.get('source_vrf') or self.device.management.get('vrf')
         protocol = dev_args.get('protocol', 'grpc').lower()
         if protocol != 'grpc':
             msg = f"Invalid protocol {protocol}"

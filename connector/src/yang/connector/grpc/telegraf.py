@@ -121,7 +121,7 @@ class Grpc(Grpc):
             # connect to proxy 
             try:
                 proxy_dev = self.device.testbed.devices[self.proxy]
-            except:
+            except KeyError:
                 log.info('The proxy is not defined in the testbed devices. searching the servers')
                 try:
                     proxy_dev = self.device.api.convert_server_to_linux_device(self.proxy)
@@ -134,15 +134,15 @@ class Grpc(Grpc):
             remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=proxy_dev.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
             # create a proxy port on the proxy using socat api for redirecting traffic to the port for remote tunnel 
             proxy_port = proxy_dev.api.socat_relay('127.0.0.1', remote_tunnel_port)
-            mgmt_ip = self.access_ip or self.device.management.get('address').get('ipv4')
+            mgmt_ip = self.source_address or self.device.management.get('address').get('ipv4')
             if mgmt_ip:
-                route_output = proxy_dev.execute(f'ip route get {mgmt_ip.ip}')
+                route_output = proxy_dev.execute(f'ip route get {proxy_dev.api.get_valid_ipv4_address(mgmt_ip)}')
                 pattern = re.compile(r'.*src (?P<route>[0-9.]+).*')
                 route_match = pattern.match(route_output)
                 if route_match:
                     proxy_ip = route_match.groupdict().get('route')
             else:
-                raise('There is no ipv4 defined under management in the testbed ')
+                raise Exception('There is no ipv4 defined under management in the testbed or the Address provided is not valid.')
         if self.telemetry_autoconfigure:
             # check if there is an existing unicon connection
             active_connection = None
