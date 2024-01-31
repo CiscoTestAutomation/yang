@@ -137,14 +137,13 @@ devices:
                        password='cisco')
         proxy.connectionmgr = mock.Mock()
         proxy.api = mock.Mock()
-        proxy.execute= mock.Mock()
-        proxy.execute.return_value = '127.0.0.1 via 1.1..1 dev example src 127.0.0.0 uid 1000 \r\n    cache'
         dev = testbed.devices['router-1']
         dev.connections['grpc'].update({'sshtunnel':{'host':'proxy'}}) 
         testbed.devices['proxy'] = proxy
-        with mock.patch('yang.connector.grpc.telegraf.sshtunnel.add_tunnel') as sshtuneel_mock:
-          sshtuneel_mock.return_value = 123
+        with mock.patch('yang.connector.grpc.telegraf.sshtunnel.add_tunnel') as sshtunnel_mock:
+          sshtunnel_mock.return_value = 123
           proxy.api.socat_relay.return_value = 321
+          proxy.api.get_ip_route_for_ipv4.return_value = '127.0.0.0'
           dev.api = mock.Mock() 
           dev.connect(via='grpc', alias='grpc')
           proxy.api.socat_relay.assert_called_with('127.0.0.1', 123)

@@ -126,7 +126,7 @@ class Grpc(Grpc):
                 try:
                     proxy_dev = self.device.api.convert_server_to_linux_device(self.proxy)
                 except Exception as e:
-                    log.error(f'Could not convert server to device because of {e}')
+                    log.exception(f'Could not convert server to device because of {e}')
                     raise e
             #connect to proxy
             proxy_dev.connect()
@@ -136,13 +136,12 @@ class Grpc(Grpc):
             proxy_port = proxy_dev.api.socat_relay('127.0.0.1', remote_tunnel_port)
             mgmt_ip = self.source_address or self.device.management.get('address', {}).get('ipv4')
             if mgmt_ip:
-                route_output = proxy_dev.execute(f'ip route get {proxy_dev.api.get_valid_ipv4_address(mgmt_ip)}')
-                pattern = re.compile(r'.*src (?P<route>[0-9.]+).*')
-                route_match = pattern.match(route_output)
-                if route_match:
-                    proxy_ip = route_match.groupdict().get('route')
+                #check and return the Ipv4address for mgmt_ip
+                ipv4 = proxy_dev.api.get_valid_ipv4_address(mgmt_ip)
+                #get the proxy ip from routing table
+                proxy_ip = proxy_dev.api.get_ip_route_for_ipv4(ipv4)
             else:
-                raise Exception('There is no ipv4 defined under management in the testbed or the Address provided is not valid.')
+                raise Exception('There is no ipv4 defined under management in the testbed or the source address provided is not valid.')
         if self.telemetry_autoconfigure:
             # check if there is an existing unicon connection
             active_connection = None
@@ -162,11 +161,11 @@ class Grpc(Grpc):
 
             # run configurations while ensuring that it is using a unicon default connection
             with self.device.temp_default_alias(active_connection):
+                # the ip for receiving data which will be configured on the device this could be the ip of 
+                # the proxy connected to device or the ip of the execution host or transporter 
                 local_ip = self.transporter_ip or self.device.api.get_local_ip()
                 self.device.api.configure_netconf_yang()
                 if self.proxy:
-                    # the ip for receiving data which will be configured on the device this could be the ip of 
-                    # the proxy connected to device or the ip of the execution host or transporter 
                     receiver_ip = proxy_ip 
                     self.device.api.configure_telemetry_ietf_parameters(sub_id=self.telemetry_subscription_id, stream="yang-push", receiver_ip=receiver_ip,
                                                                         receiver_port=proxy_port, protocol="grpc-tcp", source_vrf=self.vrf)

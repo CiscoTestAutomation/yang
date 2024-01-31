@@ -78,11 +78,14 @@ class Grpc(BaseConnection):
         self.log.setLevel(logging.INFO)
         self.proxy = dev_args.get('sshtunnel', {}).get('host')
         self.source_address = kwargs.get('source_address')
-        self.vrf = kwargs.get('source_vrf') or self.device.management.get('vrf')
         protocol = dev_args.get('protocol', 'grpc').lower()
         if protocol != 'grpc':
             msg = f"Invalid protocol {protocol}"
             raise TypeError(msg)
+        if 'source_vrf' in kwargs:
+            self.vrf = kwargs.get('source_vrf')
+        else:
+            self.vrf = self.device.management.get('vrf')  
 
         self.username = dev_args.get('username', '')
         self.password = dev_args.get('password', '')
