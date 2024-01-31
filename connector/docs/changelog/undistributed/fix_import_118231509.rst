@@ -1,6 +1,0 @@
---------------------------------------------------------------------------------
-                                Fix
---------------------------------------------------------------------------------
-* yang.connector
-    * Modified imports
-        * Added conditional imports to allow library to be used without pyats install.
