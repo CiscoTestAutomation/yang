@@ -120,26 +120,22 @@ class Grpc(Grpc):
         if self.proxy:
             # connect to proxy 
             try:
-                proxy_dev = self.device.testbed.devices[self.proxy]
+                self.proxy_dev = self.device.testbed.devices[self.proxy]
             except KeyError:
                 log.info('The proxy is not defined in the testbed devices. searching the servers')
-                try:
-                    proxy_dev = self.device.api.convert_server_to_linux_device(self.proxy)
-                except Exception as e:
-                    log.exception(f'Could not convert server to device because of {e}')
-                    raise e
+                self.proxy_dev = self.device.api.convert_server_to_linux_device(self.proxy)
             #connect to proxy
-            proxy_dev.connect()
+            self.proxy_dev.connect()
             # add a remote tunnel on the proxy for the allocated port on the execution host
-            remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=proxy_dev.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
+            remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=self.proxy_dev.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
             # create a proxy port on the proxy using socat api for redirecting traffic to the port for remote tunnel 
-            proxy_port = proxy_dev.api.socat_relay('127.0.0.1', remote_tunnel_port)
+            self.proxy_port, self.process_pid = self.proxy_dev.api.start_socat_relay('127.0.0.1', remote_tunnel_port)
             mgmt_ip = self.source_address or self.device.management.get('address', {}).get('ipv4')
             if mgmt_ip:
                 #check and return the Ipv4address for mgmt_ip
-                ipv4 = proxy_dev.api.get_valid_ipv4_address(mgmt_ip)
+                ipv4 = self.proxy_dev.api.get_valid_ipv4_address(mgmt_ip)
                 #get the proxy ip from routing table
-                proxy_ip = proxy_dev.api.get_ip_route_for_ipv4(ipv4)
+                proxy_ip = self.proxy_dev.api.get_ip_route_for_ipv4(ipv4)
             else:
                 raise Exception('There is no ipv4 defined under management in the testbed or the source address provided is not valid.')
         if self.telemetry_autoconfigure:
@@ -168,7 +164,7 @@ class Grpc(Grpc):
                 if self.proxy:
                     receiver_ip = proxy_ip 
                     self.device.api.configure_telemetry_ietf_parameters(sub_id=self.telemetry_subscription_id, stream="yang-push", receiver_ip=receiver_ip,
-                                                                        receiver_port=proxy_port, protocol="grpc-tcp", source_vrf=self.vrf)
+                                                                        receiver_port=self.proxy_port, protocol="grpc-tcp", source_vrf=self.vrf)
                 else:
                     receiver_ip = local_ip 
                     self.device.api.configure_telemetry_ietf_parameters(sub_id=self.telemetry_subscription_id,stream="yang-push",
@@ -180,7 +176,7 @@ class Grpc(Grpc):
             })
             if self.proxy:
                 log.info('Using proxy for connecting to the transporter')
-                log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port} via {proxy_ip}:{proxy_port}")
+                log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port} via {proxy_ip}:{self.proxy_port}")
             else:
                 log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
         else:
@@ -195,6 +191,9 @@ class Grpc(Grpc):
         Terminates the running telegraf process on the local machine, deconfigures the subscription from the device
         and disconnects from the subordinate CLI connection
         """
+        if self.proxy:
+            self.proxy_dev.api.stop_socat_relay(self.process_pid)
+            
         self.transport_process.terminate()
         if self.telemetry_autoconfigure:
             self.device.api.unconfigure_telemetry_ietf_subscription(self.telemetry_subscription_id)

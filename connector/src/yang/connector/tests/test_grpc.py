@@ -38,7 +38,7 @@ devices:
         protocol: grpc
         transporter_ip: 127.0.0.1
         transporter_port: 56789
-
+        autoconfigure: False
     credentials:
         default:
             username: user
@@ -99,6 +99,8 @@ devices:
         dev = testbed.devices['router-1']
         dev.connect(via='grpc', alias='grpc')
 
+        # give telegraf the opportunity to boot
+        sleep(5)
         dev.grpc.disconnect()
   
     def test_connect_with_proxy_with_autoconfigure(self):
@@ -118,7 +120,6 @@ devices:
                 protocol: grpc
                 transporter_ip: 127.0.0.1
                 transporter_port: 56789
-                autoconfigure: True
             credentials:
                 default:
                     username: user
@@ -142,11 +143,11 @@ devices:
         testbed.devices['proxy'] = proxy
         with mock.patch('yang.connector.grpc.telegraf.sshtunnel.add_tunnel') as sshtunnel_mock:
           sshtunnel_mock.return_value = 123
-          proxy.api.socat_relay.return_value = 321
+          proxy.api.start_socat_relay.return_value = 321 , 123
           proxy.api.get_ip_route_for_ipv4.return_value = '127.0.0.0'
           dev.api = mock.Mock() 
           dev.connect(via='grpc', alias='grpc')
-          proxy.api.socat_relay.assert_called_with('127.0.0.1', 123)
+          proxy.api.start_socat_relay.assert_called_with('127.0.0.1', 123)
           dev.api.configure_telemetry_ietf_parameters.assert_called_with(sub_id=11172017, stream='yang-push', receiver_ip='127.0.0.0',
                                                                         receiver_port=321, protocol='grpc-tcp',source_vrf=None)
 
