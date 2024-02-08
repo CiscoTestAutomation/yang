@@ -1,4 +1,5 @@
 import re
+import json
 import pprint
 import logging
 from lxml import etree
@@ -108,8 +109,8 @@ class NetconfCalculator(BaseCalculator):
     Attributes
     ----------
     sub : `Element`
-        Content of a Netconf edit-config which can achieve a transition from one
-        config, i.e., self.etree2, to another config, i.e., self.etree1.
+        Content of a Netconf edit-config which can achieve a transition from
+        one config, i.e., self.etree2, to another config, i.e., self.etree1.
 
     add : `Element`
         Content of a Config instance.
@@ -125,31 +126,55 @@ class NetconfCalculator(BaseCalculator):
     preferred_delete : `str`
         Preferred operation of deleting an existing element. Choice of
         'delete' or 'remove'.
+
+    diff_type : `str`
+        Choice of 'minimum' 'minimum-replace', or 'replace'. This value has impact on attribute
+        nc. In general, there are two options to construct nc. The first
+        option is to find out minimal changes between config_src and
+        config_dst. Then attribute nc will reflect what needs to be modified.
+        The second option is to use 'replace' operation in Netconf. More
+        customers prefer 'replace' operation as it is more deterministic.
+
+    replace_depth : `int`
+        Specify the deepest level of replace operation when diff_type is
+        'replace'. Replace operation might be needed earlier before we reach
+        the specified level, depending on situations. Consider roots in a YANG
+        module are level 0, their children are level 1, and so on so forth.
+        The default value of replace_depth is 0.
+    
+    replace_xpath: `str` or `list
+        Specify the xpath of the node to be replaced when diff_type is
+        'minimum-replace'. The default value of replace_xpath is None.
     '''
 
     def __init__(self, device, etree1, etree2,
                  preferred_create='merge',
                  preferred_replace='merge',
-                 preferred_delete='delete'):
+                 preferred_delete='delete',
+                 diff_type='minimum', replace_depth=0, replace_xpath=None):
         '''
         __init__ instantiates a NetconfCalculator instance.
         '''
 
         BaseCalculator.__init__(self, device, etree1, etree2)
+        self.device = device
+        self.diff_type = diff_type
+        self.replace_depth = replace_depth
+        self.replace_xpath = replace_xpath
         if preferred_create in ['merge', 'create', 'replace']:
             self.preferred_create = preferred_create
         else:
-            raise ValueError("only 'merge', 'create' or 'replace' are valid " \
+            raise ValueError("only 'merge', 'create' or 'replace' are valid "
                              "values of 'preferred_create'")
         if preferred_replace in ['merge', 'replace']:
             self.preferred_replace = preferred_replace
         else:
-            raise ValueError("only 'merge' or 'replace' are valid " \
+            raise ValueError("only 'merge' or 'replace' are valid "
                              "values of 'preferred_replace'")
         if preferred_delete in ['delete', 'remove']:
             self.preferred_delete = preferred_delete
         else:
-            raise ValueError("only 'delete' or 'remove' are valid " \
+            raise ValueError("only 'delete' or 'remove' are valid "
                              "values of 'preferred_delete'")
 
     @property
@@ -163,8 +188,254 @@ class NetconfCalculator(BaseCalculator):
     def sub(self):
         ele1 = deepcopy(self.etree1)
         ele2 = deepcopy(self.etree2)
-        self.node_sub(ele1, ele2)
+        if self.diff_type == 'replace' and self.replace_depth == 0:
+            self.get_config_replace(ele1, ele2)
+        else:
+            self.node_sub(ele1, ele2, depth=0)
+        # add attribute at depth if diff_type is 'minimum-replace'
+        if self.diff_type == 'minimum-replace' and self.replace_xpath:
+            namespaces = self.device._get_ns(ele1)
+            logger.debug("Namespaces:\n{}".format(json.dumps(namespaces, indent=2)))
+            if isinstance(self.replace_xpath, list):
+                for xpath in self.replace_xpath:
+                    self.add_attribute_by_xpath(ele1, xpath, 'operation', 'replace', namespaces)
+            else:
+                self.add_attribute_by_xpath(ele1, self.replace_xpath, 'operation', 'replace', namespaces)
+        elif self.diff_type == 'minimum-replace':
+            self.add_attribute_at_depth(ele1, self.replace_depth+1, 'operation', 'replace')
         return ele1
+
+    def add_attribute_at_depth(self, root, depth, attribute, value):
+        '''add_attribute_at_depth
+
+        High-level api: Add an attribute to all nodes at a specified depth.
+
+        Parameters
+        ----------
+        root : `Element`
+            The root of a config tree.
+        depth : `int`
+            The depth of nodes to be added with an attribute.
+        attribute : `str`
+            The name of the attribute to be added.
+        value : `str`
+            The value of the attribute to be added.
+
+        Returns
+        -------
+        None
+
+        '''
+        # Initialize current_depth as -1
+        current_depth = -1
+
+        # Create a list with the root node and its depth (0)
+        nodes_to_visit = [(root, current_depth + 1)]
+
+        # While there are nodes to visit
+        while nodes_to_visit:
+            # Pop the first node and its depth from the list
+            node, current_depth = nodes_to_visit.pop(0)
+
+            # If the current node's depth matches the specified depth
+            if current_depth == depth:
+                # Add the attribute to the node
+                node.set(attribute, value)
+            # Add the attribute to the node
+            nodes_to_visit.extend((child, current_depth + 1) for child in node)
+
+    # Not used. Saved for further use-case
+    def find_by_tags(self, root, tags):
+        '''
+        Finds all nodes matching a list of tags.
+
+        Parameters
+        ----------
+        root : `Element`
+            The root of a config tree.
+        tags : `list` of `str`
+            The list of tags specifying the nodes to be found.
+
+        Returns
+        -------
+        `list` of `Element`
+            The list of matching nodes.
+        '''
+        # Start with the root element
+        nodes = [root]
+
+        # Traverse the tree for each tag
+        for tag in tags:
+            new_nodes = []
+            for node in nodes:
+                new_nodes.extend(node.findall('.//{}'.format(tag)))
+            nodes = new_nodes
+
+        return nodes
+
+    # Not used. Saved for further use-case
+    def add_attribute_by_tags(self, root, tags, attribute, value):
+        '''add_attribute_by_tags
+
+        '''
+        nodes = self.find_by_tags(self, root, tags)
+
+        for node in nodes:
+            node.set(attribute, value)
+
+    def add_attribute_by_xpath(self, root, xpath, attribute, value, namespaces=None):
+        '''
+        Adds an attribute to all nodes matching an XPath expression.
+
+        Parameters
+        ----------
+        root : `Element`
+            The root of a config tree.
+        xpath : `str`
+            The XPath expression specifying the nodes to be modified.
+        attribute : `str`
+            The name of the attribute to be added.
+        value : `str`
+            The value of the attribute to be added.
+        namespaces : `dict`, optional
+            The namespace prefix-URI mapping, by default None
+
+        Returns
+        -------
+        None
+        '''
+        # Find all nodes matching the XPath expression
+        nodes = root.xpath(xpath, namespaces=namespaces)
+
+        # Add the attribute to all matching nodes
+        for node in nodes:
+            node.set(attribute, value)
+
+    def get_config_replace(self, node_self, node_other):
+        '''get_config_replace
+
+        High-level api: Build an edit-config using operation='replace'. It
+        will be mostly from self.etree1.
+
+        Parameters
+        ----------
+
+        None
+
+        Returns
+        -------
+
+        Element
+            An element represnting an edit-config.
+        '''
+
+        in_s_not_in_o, in_o_not_in_s, in_s_and_in_o = \
+            self._group_kids(node_self, node_other)
+        ordered_by_user = {}
+
+        for child_self in in_s_not_in_o:
+            child_self.set(operation_tag, 'replace')
+            s_node = self.device.get_schema_node(child_self)
+            if s_node.get('type') == 'leaf-list':
+                if (
+                    s_node.get('ordered-by') == 'user' and
+                    s_node.tag not in ordered_by_user
+                ):
+                    ordered_by_user[s_node.tag] = 'leaf-list'
+            elif s_node.get('type') == 'list':
+                keys = self._get_list_keys(s_node)
+                if (
+                    s_node.get('ordered-by') == 'user' and
+                    s_node.tag not in ordered_by_user
+                ):
+                    ordered_by_user[s_node.tag] = keys
+
+        for child_other in in_o_not_in_s:
+            child_self = etree.Element(child_other.tag,
+                                       {operation_tag: self.preferred_delete},
+                                       nsmap=child_other.nsmap)
+            siblings = list(node_self.iterchildren(tag=child_other.tag))
+            if siblings:
+                siblings[-1].addnext(child_self)
+            else:
+                node_self.append(child_self)
+            s_node = self.device.get_schema_node(child_other)
+            if s_node.get('type') == 'leaf-list':
+                self._merge_text(child_other, child_self)
+            elif s_node.get('type') == 'list':
+                keys = self._get_list_keys(s_node)
+                for key in keys:
+                    key_node = child_other.find(key)
+                    e = etree.SubElement(
+                        child_self, key, nsmap=key_node.nsmap)
+                    e.text = key_node.text
+
+        for child_self, child_other in in_s_and_in_o:
+            child_self.set(operation_tag, 'replace')
+            child_other.set(operation_tag, 'replace')
+            s_node = self.device.get_schema_node(child_self)
+            if s_node.get('type') == 'leaf':
+                if self._same_text(child_self, child_other):
+                    if s_node.get('is_key'):
+                        child_self.attrib.pop(operation_tag)
+                    else:
+                        node_self.remove(child_self)
+            elif s_node.get('type') == 'leaf-list':
+                if s_node.get('ordered-by') == 'user':
+                    if s_node.tag not in ordered_by_user:
+                        ordered_by_user[s_node.tag] = 'leaf-list'
+                else:
+                    node_self.remove(child_self)
+            elif s_node.get('type') == 'container':
+                if (
+                    self._node_le(child_self, child_other) and
+                    self._node_le(child_other, child_self)
+                ):
+                    node_self.remove(child_self)
+            elif s_node.get('type') == 'list':
+                if (
+                    s_node.get('ordered-by') == 'user' and
+                    s_node.tag not in ordered_by_user
+                ):
+                    ordered_by_user[s_node.tag] = self._get_list_keys(s_node)
+                if (
+                    self._node_le(child_self, child_other) and
+                    self._node_le(child_other, child_self)
+                ):
+                    if s_node.get('ordered-by') != 'user':
+                        node_self.remove(child_self)
+            else:
+                path = self.device.get_xpath(s_node)
+                raise ModelError("unknown schema node type: type of node {}"
+                                 "is '{}'".format(path, s_node.get('type')))
+
+        for tag in ordered_by_user:
+            scope_o = in_s_not_in_o + in_s_and_in_o
+            sequence = self._get_sequence(scope_o, tag, node_self)
+            for i, item in enumerate(sequence):
+                # modifying the namespace mapping of a node is not possible
+                # in lxml. See https://bugs.launchpad.net/lxml/+bug/555602
+                # if 'yang' not in item.nsmap:
+                #     item.nsmap['yang'] = yang_url
+                if i == 0:
+                    item.set(insert_tag, 'first')
+                else:
+                    item.set(insert_tag, 'after')
+                    precursor = sequence[i - 1]
+                    if ordered_by_user[tag] == 'leaf-list':
+                        item.set(value_tag, precursor.text)
+                    else:
+                        keys = ordered_by_user[tag]
+                        key_nodes = {k: precursor.find(k) for k in keys}
+                        ids = {
+                            k: self._url_to_prefix(n, k)
+                            for k, n in key_nodes.items()
+                        }
+                        id_list = [
+                            "[{}='{}']".format(ids[k], key_nodes[k].text)
+                            for k in keys
+                        ]
+                        item.set(key_tag, ''.join(id_list))
 
     def node_add(self, node_sum, node_other):
         '''node_add
@@ -199,38 +470,70 @@ class NetconfCalculator(BaseCalculator):
             self._group_kids(node_sum, node_other)
         for child_self in in_s_not_in_o:
             pass
+
         for child_other in in_o_not_in_s:
+            this_operation = child_other.get(operation_tag, default='merge')
+
             # delete
-            if child_other.get(operation_tag) == 'delete':
-                raise ConfigDeltaError('data-missing: try to delete node {} ' \
-                                       'but it does not exist in config' \
-                                       .format(self.device \
-                                                   .get_xpath(child_other)))
+            if this_operation == 'delete':
+                raise ConfigDeltaError(
+                    'data-missing: try to delete node {} but it does not '
+                    'exist in config'.format(
+                        self.device.get_xpath(child_other)
+                    )
+                )
+
             # remove
-            elif child_other.get(operation_tag) == 'remove':
+            elif this_operation == 'remove':
                 pass
-            # merge, replace, create or none
-            else:
+
+            # merge, create, replace or none
+            elif (
+                this_operation == 'merge' or
+                this_operation == 'replace' or
+                this_operation == 'create'
+            ):
                 s_node = self.device.get_schema_node(child_other)
                 if s_node.get('type') in supported_node_type:
-                    getattr(self,
-                            '_node_add_without_peer_{}' \
-                            .format(s_node.get('type').replace('-', ''))) \
-                            (node_sum, child_other)
+                    getattr(
+                        self,
+                        '_node_add_without_peer_{}'.format(
+                            s_node.get('type').replace('-', '')
+                        )
+                    )(node_sum, child_other)
+
+            else:
+                raise ConfigDeltaError(
+                    "unknown operation: node {} contains operation "
+                    "'{}'".format(
+                        self.device.get_xpath(child_other),
+                        this_operation
+                    )
+                )
+
         for child_self, child_other in in_s_and_in_o:
             s_node = self.device.get_schema_node(child_self)
             if s_node.get('type') in supported_node_type:
-                getattr(self,
-                        '_node_add_with_peer_{}' \
-                        .format(s_node.get('type').replace('-', ''))) \
-                        (child_self, child_other)
+                getattr(
+                    self,
+                    '_node_add_with_peer_{}'.format(
+                        s_node.get('type').replace('-', '')
+                    )
+                )(child_self, child_other)
+
+            if not list(child_self):
+                if (
+                    s_node.get('type') == 'container' and
+                    s_node.get('presence') != 'true'
+                ):
+                    node_sum.remove(child_self)
 
     def _node_add_without_peer_leaf(self, node_sum, child_other):
         '''_node_add_without_peer_leaf
 
-        Low-level api: Apply delta child_other to node_sum when there is no peer
-        of child_other can be found under node_sum. child_other is a leaf node.
-        Element node_sum will be modified during the process.
+        Low-level api: Apply delta child_other to node_sum when there is no
+        peer of child_other can be found under node_sum. child_other is a leaf
+        node. Element node_sum will be modified during the process.
 
         Parameters
         ----------
@@ -255,9 +558,9 @@ class NetconfCalculator(BaseCalculator):
     def _node_add_without_peer_leaflist(self, node_sum, child_other):
         '''_node_add_without_peer_leaflist
 
-        Low-level api: Apply delta child_other to node_sum when there is no peer
-        of child_other can be found under node_sum. child_other is a leaf-list
-        node. Element node_sum will be modified during the process.
+        Low-level api: Apply delta child_other to node_sum when there is no
+        peer of child_other can be found under node_sum. child_other is a
+        leaf-list node. Element node_sum will be modified during the process.
 
         Parameters
         ----------
@@ -325,8 +628,43 @@ class NetconfCalculator(BaseCalculator):
     def _node_add_without_peer_container(self, node_sum, child_other):
         '''_node_add_without_peer_container
 
-        Low-level api: Apply delta child_other to node_sum when there is no peer
-        of child_other can be found under node_sum. child_other is a container
+        Low-level api: Apply delta child_other to node_sum when there is no
+        peer of child_other can be found under node_sum. child_other is a
+        container node. Element node_sum will be modified during the process.
+
+        Parameters
+        ----------
+
+        node_sum : `Element`
+            A config node in a config tree.
+
+        child_other : `Element`
+            A child of a config node in another config tree. This child has no
+            peer under node_sum.
+
+        Returns
+        -------
+
+        None
+            There is no return of this method.
+        '''
+
+        this_operation = child_other.get(operation_tag, default='merge')
+        if this_operation == 'merge':
+            e = etree.SubElement(node_sum, child_other.tag,
+                                 nsmap=child_other.nsmap)
+            self.node_add(e, child_other)
+        elif (
+            this_operation == 'replace' or
+            this_operation == 'create'
+        ):
+            node_sum.append(self._del_attrib(deepcopy(child_other)))
+
+    def _node_add_without_peer_list(self, node_sum, child_other):
+        '''_node_add_without_peer_list
+
+        Low-level api: Apply delta child_other to node_sum when there is no
+        peer of child_other can be found under node_sum. child_other is a list
         node. Element node_sum will be modified during the process.
 
         Parameters
@@ -346,49 +684,33 @@ class NetconfCalculator(BaseCalculator):
             There is no return of this method.
         '''
 
-        e = deepcopy(child_other)
-        node_sum.append(self._del_attrib(e))
-
-    def _node_add_without_peer_list(self, node_sum, child_other):
-        '''_node_add_without_peer_list
-
-        Low-level api: Apply delta child_other to node_sum when there is no peer
-        of child_other can be found under node_sum. child_other is a list node.
-        Element node_sum will be modified during the process.
-
-        Parameters
-        ----------
-
-        node_sum : `Element`
-            A config node in a config tree.
-
-        child_other : `Element`
-            A child of a config node in another config tree. This child has no
-            peer under node_sum.
-
-        Returns
-        -------
-
-        None
-            There is no return of this method.
-        '''
-
         s_node = self.device.get_schema_node(child_other)
-        e = deepcopy(child_other)
+        this_operation = child_other.get(operation_tag, default='merge')
+        if this_operation == 'merge':
+            e = etree.Element(child_other.tag, nsmap=child_other.nsmap)
+            for list_key_tag in self._get_list_keys(s_node):
+                key_ele_other = child_other.find(list_key_tag)
+                key_ele_self = deepcopy(key_ele_other)
+                e.append(self._del_attrib(key_ele_self))
+        elif (
+            this_operation == 'replace' or
+            this_operation == 'create'
+        ):
+            e = self._del_attrib(deepcopy(child_other))
         scope = node_sum.getchildren()
         siblings = self._get_sequence(scope, child_other.tag, node_sum)
         if s_node.get('ordered-by') == 'user' and \
            child_other.get(insert_tag) is not None:
             if child_other.get(insert_tag) == 'first':
                 if siblings:
-                    siblings[0].addprevious(self._del_attrib(e))
+                    siblings[0].addprevious(e)
                 else:
-                    node_sum.append(self._del_attrib(e))
+                    node_sum.append(e)
             elif child_other.get(insert_tag) == 'last':
                 if siblings:
-                    siblings[-1].addnext(self._del_attrib(e))
+                    siblings[-1].addnext(e)
                 else:
-                    node_sum.append(self._del_attrib(e))
+                    node_sum.append(e)
             elif child_other.get(insert_tag) == 'before':
                 if child_other.get(key_tag) is None:
                     _inserterror('before', self.device.get_xpath(child_other),
@@ -400,7 +722,7 @@ class NetconfCalculator(BaseCalculator):
                     path = self.device.get_xpath(child_other)
                     key = child_other.get(key_tag)
                     _inserterror('before', path, 'key', key)
-                sibling.addprevious(self._del_attrib(e))
+                sibling.addprevious(e)
             elif child_other.get(insert_tag) == 'after':
                 if child_other.get(key_tag) is None:
                     _inserterror('after', self.device.get_xpath(child_other),
@@ -412,12 +734,14 @@ class NetconfCalculator(BaseCalculator):
                     path = self.device.get_xpath(child_other)
                     key = child_other.get(key_tag)
                     _inserterror('after', path, 'key', key)
-                sibling.addnext(self._del_attrib(e))
+                sibling.addnext(e)
         else:
             if siblings:
-                siblings[-1].addnext(self._del_attrib(e))
+                siblings[-1].addnext(e)
             else:
-                node_sum.append(self._del_attrib(e))
+                node_sum.append(e)
+        if this_operation == 'merge':
+            self.node_add(e, child_other)
 
     def _node_add_with_peer_leaf(self, child_self, child_other):
         '''_node_add_with_peer_leaf
@@ -444,33 +768,34 @@ class NetconfCalculator(BaseCalculator):
             There is no return of this method.
         '''
 
-        if child_other.get(operation_tag) is None:
-            child_self.text = child_other.text
-        elif child_other.get(operation_tag) == 'merge':
-            child_self.text = child_other.text
-        elif child_other.get(operation_tag) == 'replace':
-            child_self.text = child_other.text
-        elif child_other.get(operation_tag) == 'create':
-            raise ConfigDeltaError('data-exists: try to create node {} but ' \
-                                   'it already exists' \
+        this_operation = child_other.get(operation_tag, default='merge')
+        if this_operation == 'merge':
+            self._merge_text(child_other, child_self)
+        elif this_operation == 'replace':
+            self._merge_text(child_other, child_self)
+        elif this_operation == 'create':
+            raise ConfigDeltaError('data-exists: try to create node {} but '
+                                   'it already exists'
                                    .format(self.device.get_xpath(child_other)))
-        elif child_other.get(operation_tag) == 'delete' or \
-             child_other.get(operation_tag) == 'remove':
+        elif (
+            this_operation == 'delete' or
+            this_operation == 'remove'
+        ):
             parent_self = child_self.getparent()
             parent_self.remove(child_self)
         else:
-            raise ConfigDeltaError("unknown operation: node {} contains " \
-                                   "operation '{}'" \
+            raise ConfigDeltaError("unknown operation: node {} contains "
+                                   "operation '{}'"
                                    .format(self.device.get_xpath(child_other),
-                                           child_other.get(operation_tag)))
+                                           this_operation))
 
     def _node_add_with_peer_leaflist(self, child_self, child_other):
         '''_node_add_with_peer_leaflist
 
         Low-level api: Apply delta child_other to child_self when child_self is
         the peer of child_other. Element child_self and child_other are
-        leaf-list nodes. Element child_self will be modified during the process.
-        RFC6020 section 7.7.7 is a reference of this method.
+        leaf-list nodes. Element child_self will be modified during the
+        process. RFC6020 section 7.7.7 is a reference of this method.
 
         Parameters
         ----------
@@ -491,9 +816,9 @@ class NetconfCalculator(BaseCalculator):
 
         parent_self = child_self.getparent()
         s_node = self.device.get_schema_node(child_self)
-        if child_other.get(operation_tag) is None or \
-           child_other.get(operation_tag) == 'merge' or \
-           child_other.get(operation_tag) == 'replace':
+        this_operation = child_other.get(operation_tag, default='merge')
+        if this_operation == 'merge' or \
+           this_operation == 'replace':
             if s_node.get('ordered-by') == 'user' and \
                child_other.get(insert_tag) is not None:
                 if child_other.get(insert_tag) == 'first':
@@ -536,26 +861,28 @@ class NetconfCalculator(BaseCalculator):
                         _inserterror('after', path, 'value', value)
                     if sibling[0] != child_self:
                         sibling[0].addnext(child_self)
-        elif child_other.get(operation_tag) == 'create':
-            raise ConfigDeltaError('data-exists: try to create node {} but ' \
-                                   'it already exists' \
+        elif this_operation == 'create':
+            raise ConfigDeltaError('data-exists: try to create node {} but '
+                                   'it already exists'
                                    .format(self.device.get_xpath(child_other)))
-        elif child_other.get(operation_tag) == 'delete' or \
-             child_other.get(operation_tag) == 'remove':
+        elif (
+            this_operation == 'delete' or
+            this_operation == 'remove'
+        ):
             parent_self.remove(child_self)
         else:
-            raise ConfigDeltaError("unknown operation: node {} contains " \
-                                   "operation '{}'" \
+            raise ConfigDeltaError("unknown operation: node {} contains "
+                                   "operation '{}'"
                                    .format(self.device.get_xpath(child_other),
-                                           child_other.get(operation_tag)))
+                                           this_operation))
 
     def _node_add_with_peer_container(self, child_self, child_other):
         '''_node_add_with_peer_container
 
         Low-level api: Apply delta child_other to child_self when child_self is
         the peer of child_other. Element child_self and child_other are
-        container nodes. Element child_self will be modified during the process.
-        RFC6020 section 7.5.8 is a reference of this method.
+        container nodes. Element child_self will be modified during the
+        process. RFC6020 section 7.5.8 is a reference of this method.
 
         Parameters
         ----------
@@ -575,24 +902,26 @@ class NetconfCalculator(BaseCalculator):
         '''
 
         parent_self = child_self.getparent()
-        if child_other.get(operation_tag) is None or \
-           child_other.get(operation_tag) == 'merge':
+        this_operation = child_other.get(operation_tag, default='merge')
+        if this_operation == 'merge':
             self.node_add(child_self, child_other)
-        elif child_other.get(operation_tag) == 'replace':
-            e = deepcopy(child_other)
-            parent_self.replace(child_self, self._del_attrib(e))
-        elif child_other.get(operation_tag) == 'create':
-            raise ConfigDeltaError('data-exists: try to create node {} but ' \
-                                   'it already exists' \
+        elif this_operation == 'replace':
+            parent_self.replace(child_self,
+                                self._del_attrib(deepcopy(child_other)))
+        elif this_operation == 'create':
+            raise ConfigDeltaError('data-exists: try to create node {} but '
+                                   'it already exists'
                                    .format(self.device.get_xpath(child_other)))
-        elif child_other.get(operation_tag) == 'delete' or \
-             child_other.get(operation_tag) == 'remove':
+        elif (
+            this_operation == 'delete' or
+            this_operation == 'remove'
+        ):
             parent_self.remove(child_self)
         else:
-            raise ConfigDeltaError("unknown operation: node {} contains " \
-                                   "operation '{}'" \
+            raise ConfigDeltaError("unknown operation: node {} contains "
+                                   "operation '{}'"
                                    .format(self.device.get_xpath(child_other),
-                                           child_other.get(operation_tag)))
+                                           this_operation))
 
     def _node_add_with_peer_list(self, child_self, child_other):
         '''_node_add_with_peer_list
@@ -621,8 +950,9 @@ class NetconfCalculator(BaseCalculator):
 
         parent_self = child_self.getparent()
         s_node = self.device.get_schema_node(child_self)
-        if child_other.get(operation_tag) != 'delete' and \
-           child_other.get(operation_tag) != 'remove' and \
+        this_operation = child_other.get(operation_tag, default='merge')
+        if this_operation != 'delete' and \
+           this_operation != 'remove' and \
            s_node.get('ordered-by') == 'user' and \
            child_other.get(insert_tag) is not None:
             if child_other.get(insert_tag) == 'first':
@@ -663,26 +993,27 @@ class NetconfCalculator(BaseCalculator):
                     _inserterror('after', path, 'key', key)
                 if sibling != child_self:
                     sibling.addnext(child_self)
-        if child_other.get(operation_tag) is None or \
-           child_other.get(operation_tag) == 'merge':
+        if this_operation == 'merge':
             self.node_add(child_self, child_other)
-        elif child_other.get(operation_tag) == 'replace':
-            e = deepcopy(child_other)
-            parent_self.replace(child_self, self._del_attrib(e))
-        elif child_other.get(operation_tag) == 'create':
-            raise ConfigDeltaError('data-exists: try to create node {} but ' \
-                                   'it already exists' \
+        elif this_operation == 'replace':
+            parent_self.replace(child_self,
+                                self._del_attrib(deepcopy(child_other)))
+        elif this_operation == 'create':
+            raise ConfigDeltaError('data-exists: try to create node {} but '
+                                   'it already exists'
                                    .format(self.device.get_xpath(child_other)))
-        elif child_other.get(operation_tag) == 'delete' or \
-             child_other.get(operation_tag) == 'remove':
+        elif (
+            this_operation == 'delete' or
+            this_operation == 'remove'
+        ):
             parent_self.remove(child_self)
         else:
-            raise ConfigDeltaError("unknown operation: node {} contains " \
-                                   "operation '{}'" \
+            raise ConfigDeltaError("unknown operation: node {} contains "
+                                   "operation '{}'"
                                    .format(self.device.get_xpath(child_other),
-                                           child_other.get(operation_tag)))
+                                           this_operation))
 
-    def node_sub(self, node_self, node_other):
+    def node_sub(self, node_self, node_other, depth=0):
         '''node_sub
 
         Low-level api: Compute the delta of two configs. This method is
@@ -698,6 +1029,12 @@ class NetconfCalculator(BaseCalculator):
         node_other : `Element`
             A config node in another config tree that is being processed.
 
+        depth : `int`
+            Specify the current level of processing. In other words, how many
+            hops from node_self to roots. Consider roots in a YANG module are
+            level 0, their children are level 1, and so on so forth. The
+            default value of depth is 0.
+
         Returns
         -------
 
@@ -705,32 +1042,20 @@ class NetconfCalculator(BaseCalculator):
             There is no return of this method.
         '''
 
-        def same_leaf_list(tag):
-            list_self = [c for c in list(node_self) if c.tag == tag]
-            list_other = [c for c in list(node_other) if c.tag == tag]
-            s_node = self.device.get_schema_node((list_self + list_other)[0])
-            if s_node.get('ordered-by') == 'user':
-                if [i.text for i in list_self] == [i.text for i in list_other]:
-                    return True
-                else:
-                    return False
-            else:
-                if set([i.text for i in list_self]) == \
-                   set([i.text for i in list_other]):
-                    return True
-                else:
-                    return False
-
         if self.preferred_replace != 'merge':
-            t_self = [c.tag for c in list(node_self) \
-                      if self.device.get_schema_node(c).get('type') == \
-                         'leaf-list']
-            t_other = [c.tag for c in list(node_other) \
-                       if self.device.get_schema_node(c).get('type') == \
-                          'leaf-list']
+            t_self = [
+                c.tag for c in list(node_self)
+                if self.device.get_schema_node(c).get('type') == 'leaf-list'
+            ]
+            t_other = [
+                c.tag for c in list(node_other)
+                if self.device.get_schema_node(c).get('type') == 'leaf-list'
+            ]
             commonalities = set(t_self) & set(t_other)
             for commonality in commonalities:
-                if not same_leaf_list(commonality):
+                if not self._same_leaf_list(commonality,
+                                            node_self,
+                                            node_other):
                     node_self.set(operation_tag, 'replace')
                     node_other.set(operation_tag, 'replace')
                     return
@@ -745,6 +1070,8 @@ class NetconfCalculator(BaseCalculator):
                                         nsmap=child_self.nsmap)
             if self.preferred_create != 'merge':
                 child_self.set(operation_tag, self.preferred_create)
+            if self.diff_type == 'replace':
+                child_self.set(operation_tag, 'replace')
             siblings = list(node_other.iterchildren(tag=child_self.tag))
             if siblings:
                 siblings[-1].addnext(child_other)
@@ -755,7 +1082,7 @@ class NetconfCalculator(BaseCalculator):
                 if s_node.get('ordered-by') == 'user' and \
                    s_node.tag not in ordered_by_user:
                     ordered_by_user[s_node.tag] = 'leaf-list'
-                child_other.text = child_self.text
+                self._merge_text(child_self, child_other)
             elif s_node.get('type') == 'list':
                 keys = self._get_list_keys(s_node)
                 if s_node.get('ordered-by') == 'user' and \
@@ -763,7 +1090,8 @@ class NetconfCalculator(BaseCalculator):
                     ordered_by_user[s_node.tag] = keys
                 for key in keys:
                     key_node = child_self.find(key)
-                    e = etree.SubElement(child_other, key, nsmap=key_node.nsmap)
+                    e = etree.SubElement(
+                        child_other, key, nsmap=key_node.nsmap)
                     e.text = key_node.text
             if s_node.getparent().get('type') == 'case':
                 # key: choice node, value: case node
@@ -782,8 +1110,7 @@ class NetconfCalculator(BaseCalculator):
                 # Append node if:
                 # Node not in case
                 # Node in case but choice node not in self
-                # Node in case and choice node in self and the same case also
-                # in self
+                # Node in case and choice node in self and the same case also in self
                 if s_node.getparent().get('type') == 'case':
                     choice_node = s_node.getparent().getparent()
                     if choice_node not in choice_nodes or \
@@ -795,7 +1122,7 @@ class NetconfCalculator(BaseCalculator):
                 if s_node.get('ordered-by') == 'user' and \
                    s_node.tag not in ordered_by_user:
                     ordered_by_user[s_node.tag] = 'leaf-list'
-                child_self.text = child_other.text
+                self._merge_text(child_other, child_self)
             elif s_node.get('type') == 'list':
                 keys = self._get_list_keys(s_node)
                 if s_node.get('ordered-by') == 'user' and \
@@ -808,7 +1135,7 @@ class NetconfCalculator(BaseCalculator):
         for child_self, child_other in in_s_and_in_o:
             s_node = self.device.get_schema_node(child_self)
             if s_node.get('type') == 'leaf':
-                if child_self.text == child_other.text:
+                if self._same_text(child_self, child_other):
                     if not s_node.get('is_key'):
                         node_self.remove(child_self)
                         node_other.remove(child_other)
@@ -829,7 +1156,13 @@ class NetconfCalculator(BaseCalculator):
                     node_self.remove(child_self)
                     node_other.remove(child_other)
                 else:
-                    self.node_sub(child_self, child_other)
+                    if (
+                        self.diff_type == 'replace' and
+                        self.replace_depth == depth + 1
+                    ):
+                        self.get_config_replace(child_self, child_other)
+                    else:
+                        self.node_sub(child_self, child_other, depth=depth+1)
             elif s_node.get('type') == 'list':
                 if s_node.get('ordered-by') == 'user' and \
                    s_node.tag not in ordered_by_user:
@@ -849,16 +1182,24 @@ class NetconfCalculator(BaseCalculator):
                         node_self.remove(child_self)
                         node_other.remove(child_other)
                 else:
-                    self.node_sub(child_self, child_other)
+                    if (
+                        self.diff_type == 'replace' and
+                        self.replace_depth == depth + 1
+                    ):
+                        self.get_config_replace(child_self, child_other)
+                    else:
+                        self.node_sub(child_self, child_other, depth=depth+1)
             else:
                 path = self.device.get_xpath(s_node)
-                raise ModelError("unknown schema node type: type of node {}" \
+                raise ModelError("unknown schema node type: type of node {}"
                                  "is '{}'".format(path, s_node.get('type')))
         for tag in ordered_by_user:
             scope_s = in_s_not_in_o + in_s_and_in_o
             scope_o = in_o_not_in_s + in_s_and_in_o
-            for sequence in self._get_sequence(scope_s, tag, node_self), \
-                            self._get_sequence(scope_o, tag, node_other):
+            for sequence in (
+                self._get_sequence(scope_s, tag, node_self),
+                self._get_sequence(scope_o, tag, node_other),
+            ):
                 for item in sequence:
                     # modifying the namespace mapping of a node is not possible
                     # in lxml. See https://bugs.launchpad.net/lxml/+bug/555602
@@ -875,11 +1216,15 @@ class NetconfCalculator(BaseCalculator):
                         else:
                             keys = ordered_by_user[tag]
                             key_nodes = {k: precursor.find(k) for k in keys}
-                            ids = {k: self._url_to_prefix(n, k) \
-                                   for k, n in key_nodes.items()}
-                            l = ["[{}='{}']".format(ids[k], key_nodes[k].text) \
-                                 for k in keys]
-                            item.set(key_tag, ''.join(l))
+                            ids = {
+                                k: self._url_to_prefix(n, k)
+                                for k, n in key_nodes.items()
+                            }
+                            id_list = [
+                                "[{}='{}']".format(ids[k], key_nodes[k].text)
+                                for k in keys
+                            ]
+                            item.set(key_tag, ''.join(id_list))
 
     @staticmethod
     def _url_to_prefix(node, id):
@@ -893,7 +1238,7 @@ class NetconfCalculator(BaseCalculator):
         Parameters
         ----------
 
-        node : `str`
+        node : `Element`
             A config node. Its identifier will be converted.
 
         id : `str`
@@ -915,3 +1260,50 @@ class NetconfCalculator(BaseCalculator):
                 else:
                     return prefixes[ret.group(1)] + ':' + ret.group(2)
         return id
+
+    def _same_leaf_list(self, leaf_list_tag, parent_node_1, parent_node_2):
+        '''_same_leaf_list
+
+        Low-level api: Return True when two leaf-list's that are identified by
+        leaf_list_tag are same.
+
+        Parameters
+        ----------
+
+        leaf_list_tag : `str`
+            A config node. Its identifier will be converted.
+
+        parent_node_1 : `Element`
+            One parent node. One or multiple leaf-list nodes are its children.
+
+        parent_node_2 : `Element`
+            The other parent node. One or multiple leaf-list nodes are its
+            children.
+
+        Returns
+        -------
+
+        bool
+            True when the leaf-list nodes under two parent nodes are same.
+            Otherwise False.
+        '''
+
+        list_1 = [c for c in list(parent_node_1) if c.tag == leaf_list_tag]
+        list_2 = [c for c in list(parent_node_2) if c.tag == leaf_list_tag]
+        s_node = self.device.get_schema_node((list_1 + list_2)[0])
+        if s_node.get('ordered-by') == 'user':
+            if (
+                [self._parse_text(i, s_node) for i in list_1] ==
+                [self._parse_text(i, s_node) for i in list_2]
+            ):
+                return True
+            else:
+                return False
+        else:
+            if (
+                set([self._parse_text(i, s_node) for i in list_1]) ==
+                set([self._parse_text(i, s_node) for i in list_2])
+            ):
+                return True
+            else:
+                return False

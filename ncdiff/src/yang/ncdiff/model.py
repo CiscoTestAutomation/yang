@@ -1,12 +1,22 @@
 import math
 import os
 import re
+import queue
 import logging
 from lxml import etree
 from copy import deepcopy
 from ncclient import operations
+from threading import Thread, current_thread
+from pyang import statements
 from subprocess import PIPE, Popen
-
+try:
+    from pyang.repository import FileRepository
+except ImportError:
+    from pyang import FileRepository
+try:
+    from pyang.context import Context
+except ImportError:
+    from pyang import Context
 from .errors import ModelError
 
 # create a logger for this module
@@ -431,6 +441,215 @@ class Model(object):
             self.convert_tree(e1, e2)
         return element2
 
+class DownloadWorker(Thread):
+
+    def __init__(self, downloader):
+        Thread.__init__(self)
+        self.downloader = downloader
+
+    def run(self):
+        while not self.downloader.download_queue.empty():
+            try:
+                module = self.downloader.download_queue.get(timeout=0.01)
+            except queue.Empty:
+                pass
+            else:
+                self.downloader.download(module)
+                self.downloader.download_queue.task_done()
+        logger.debug('Thread {} exits'.format(current_thread().name))
+
+class ContextWorker(Thread):
+
+    def __init__(self, context):
+        Thread.__init__(self)
+        self.context = context
+
+    def run(self):
+        varnames = Context.add_module.__code__.co_varnames
+        while not self.context.modulefile_queue.empty():
+            try:
+                modulefile = self.context.modulefile_queue.get(timeout=0.01)
+            except queue.Empty:
+                pass
+            else:
+                with open(modulefile, 'r', encoding='utf-8') as f:
+                    text = f.read()
+                kwargs = {
+                    'ref': modulefile,
+                    'text': text,
+                }
+                if 'primary_module' in varnames:
+                    kwargs['primary_module'] = True
+                if 'format' in varnames:
+                    kwargs['format'] = 'yang'
+                if 'in_format' in varnames:
+                    kwargs['in_format'] = 'yang'
+                module_statement = self.context.add_module(**kwargs)
+                self.context.update_dependencies(module_statement)
+                self.context.modulefile_queue.task_done()
+        logger.debug('Thread {} exits'.format(current_thread().name))
+
+class CompilerContext(Context):
+
+    def __init__(self, repository):
+        Context.__init__(self, repository)
+        self.dependencies = None
+        self.modulefile_queue = None
+        if 'prune' in dir(statements.Statement):
+            self.num_threads = 2
+        else:
+            self.num_threads = 1
+
+    def _get_latest_revision(self, modulename):
+        latest = None
+        for module_name, module_revision in self.modules:
+            if module_name == modulename and (
+                latest is None or module_revision > latest
+            ):
+                latest = module_revision
+        return latest
+
+    def get_statement(self, modulename, xpath=None):
+        revision = self._get_latest_revision(modulename)
+        if revision is None:
+            return None
+        if xpath is None:
+            return self.modules[(modulename, revision)]
+
+        # in order to follow the Xpath, the module is required to be validated
+        node_statement = self.modules[(modulename, revision)]
+        if node_statement.i_is_validated is not True:
+            return None
+
+        # xpath is given, so find the node statement
+        xpath_list = xpath.split('/')
+
+        # only absolute Xpaths are supported
+        if len(xpath_list) < 2:
+            return None
+        if (
+            xpath_list[0] == '' and xpath_list[1] == '' or
+            xpath_list[0] != ''
+        ):
+            return None
+
+        # find the node statement
+        root_prefix = node_statement.i_prefix
+        for n in xpath_list[1:]:
+            node_statement = self.get_child(root_prefix, node_statement, n)
+            if node_statement is None:
+                return None
+        return node_statement
+
+    def get_child(self, root_prefix, parent, child_id):
+        child_id_list = child_id.split(':')
+        if len(child_id_list) > 1:
+            children = [
+                c for c in parent.i_children
+                if c.arg == child_id_list[1] and
+                c.i_module.i_prefix == child_id_list[0]
+            ]
+        elif len(child_id_list) == 1:
+            children = [
+                c for c in parent.i_children
+                if c.arg == child_id_list[0] and
+                c.i_module.i_prefix == root_prefix
+            ]
+        return children[0] if children else None
+
+    def update_dependencies(self, module_statement):
+        if self.dependencies is None:
+            self.dependencies = etree.Element('modules')
+        for m in [
+            m for m in self.dependencies
+            if m.attrib.get('id') == module_statement.arg
+        ]:
+            self.dependencies.remove(m)
+        module_node = etree.SubElement(self.dependencies, 'module')
+        module_node.set('id', module_statement.arg)
+        module_node.set('type', module_statement.keyword)
+        if module_statement.keyword == 'module':
+            statement = module_statement.search_one('prefix')
+            if statement is not None:
+                module_node.set('prefix', statement.arg)
+            statement = module_statement.search_one("namespace")
+            if statement is not None:
+                namespace = etree.SubElement(module_node, 'namespace')
+                namespace.text = statement.arg
+        if module_statement.keyword == 'submodule':
+            statement = module_statement.search_one("belongs-to")
+            if statement is not None:
+                belongs_to = etree.SubElement(module_node, 'belongs-to')
+                belongs_to.set('module', statement.arg)
+
+        dependencies = set()
+        for parent_node_name, child_node_name, attr_name in [
+            ('includes', 'include', 'module'),
+            ('imports', 'import', 'module'),
+            ('revisions', 'revision', 'date'),
+        ]:
+            parent = etree.SubElement(module_node, parent_node_name)
+            statements = module_statement.search(child_node_name)
+            if statements:
+                for statement in statements:
+                    child = etree.SubElement(parent, child_node_name)
+                    child.set(attr_name, statement.arg)
+                    if child_node_name in ['include', 'import']:
+                        dependencies.add(statement.arg)
+        return dependencies
+
+    def write_dependencies(self):
+        dependencies_file = os.path.join(
+            self.repository.dirs[0],
+            'dependencies.xml',
+        )
+        write_xml(dependencies_file, self.dependencies)
+
+    def read_dependencies(self):
+        dependencies_file = os.path.join(
+            self.repository.dirs[0],
+            'dependencies.xml',
+        )
+        self.dependencies = read_xml(dependencies_file)
+
+    def load_context(self):
+        self.modulefile_queue = queue.Queue()
+        for filename in os.listdir(self.repository.dirs[0]):
+            if filename.lower().endswith('.yang'):
+                filepath = os.path.join(self.repository.dirs[0], filename)
+                self.modulefile_queue.put(filepath)
+        for x in range(self.num_threads):
+            worker = ContextWorker(self)
+            worker.daemon = True
+            worker.name = 'context_worker_{}'.format(x)
+            worker.start()
+        self.modulefile_queue.join()
+        self.write_dependencies()
+
+    def validate_context(self):
+        revisions = {}
+        for mudule_name, module_revision in self.modules:
+            if mudule_name not in revisions or (
+                mudule_name in revisions and
+                revisions[mudule_name] < module_revision
+            ):
+                revisions[mudule_name] = module_revision
+        self.validate()
+        if 'prune' in dir(statements.Statement):
+            for mudule_name, module_revision in revisions.items():
+                self.modules[(mudule_name, module_revision)].prune()
+
+    def internal_reset(self):
+        self.modules = {}
+        self.revs = {}
+        self.errors = []
+        for mod, rev, handle in self.repository.get_modules_and_revisions(
+                self):
+            if mod not in self.revs:
+                self.revs[mod] = []
+            revs = self.revs[mod]
+            revs.append((rev, handle))
+
 
 class ModelDownloader(object):
     '''ModelDownloader
@@ -467,6 +686,10 @@ class ModelDownloader(object):
         if not os.path.isdir(self.dir_yang):
             os.makedirs(self.dir_yang)
         self.yang_capabilities = self.dir_yang + '/capabilities.txt'
+        repo = FileRepository(path=self.dir_yang)
+        self.context = CompilerContext(repository=repo)
+        self.download_queue = queue.Queue()
+        self.num_threads = 2
 
     @property
     def need_download(self):
@@ -601,6 +824,24 @@ class ModelCompiler(object):
         self.dir_yang = os.path.abspath(folder)
         self.build_dependencies()
 
+    def _xml_from_cache(self, name):
+        try:
+            cached_name = os.path.join(self.dir_yang, f"{name}.xml")
+            if os.path.exists(cached_name):
+                with(open(cached_name, "r", encoding="utf-8")) as fh:
+                    parser = etree.XMLParser(remove_blank_text=True)
+                    tree = etree.XML(fh.read(), parser)
+                    return tree
+        except Exception:
+            # make the cache safe: any failure will just bypass the cache
+            logger.info(f"Unexpected failure during cache read of {name}, refreshing cache", exc_info=True)
+        return None
+
+    def _to_cache(self, name, value):
+        cached_name = os.path.join(self.dir_yang, f"{name}.xml")
+        with open(cached_name, "wb") as fh:
+            fh.write(value)
+
     def build_dependencies(self):
         '''build_dependencies
 
@@ -614,6 +855,11 @@ class ModelCompiler(object):
             Nothing returns.
         '''
 
+        from_cache = self._xml_from_cache("$dependencies")
+        if from_cache is not None:
+            self.dependencies = from_cache
+            return
+
         cmd_list = ['pyang', '--plugindir', self.pyang_plugins]
         cmd_list += ['-p', self.dir_yang]
         cmd_list += ['-f', 'pyimport']
@@ -624,6 +870,9 @@ class ModelCompiler(object):
         logger.info('pyang return code is {}'.format(p.returncode))
         logger.debug(stderr.decode())
         parser = etree.XMLParser(remove_blank_text=True)
+
+        self._to_cache("$dependencies",stdout)
+
         self.dependencies = etree.XML(stdout.decode(), parser)
 
     def get_dependencies(self, module):
@@ -676,6 +925,11 @@ class ModelCompiler(object):
         Model
             A Model object.
         '''
+        cached_tree = self._xml_from_cache(module)
+
+        if cached_tree is not None:
+            m = Model(cached_tree)
+            return m
 
         imports, depends = self.get_dependencies(module)
         file_list = list(imports | depends) + [module]
@@ -692,7 +946,11 @@ class ModelCompiler(object):
         else:
             logger.error(stderr.decode())
         parser = etree.XMLParser(remove_blank_text=True)
-        tree = etree.XML(stdout.decode(), parser)
+
+        self._to_cache(module, stdout)
+
+        out = stdout.decode()
+        tree = etree.XML(out, parser)
         return Model(tree)
 
 

@@ -62,7 +62,7 @@ class Config(object):
         `{url}tagname` notation, and values are corresponding model names.
     '''
 
-    def __init__(self, ncdevice, config=None):
+    def __init__(self, ncdevice, config=None, validate=True):
         '''
         __init__ instantiates a Config instance.
         '''
@@ -86,7 +86,8 @@ class Config(object):
             raise TypeError("argument 'config' must be None, XML string, " \
                             "or Element, but not '{}'" \
                             .format(type(config)))
-        self.validate_config()
+        if validate:
+            self.validate_config()
 
     def __repr__(self):
         return '<{}.{} {} at {}>'.format(self.__class__.__module__,
@@ -100,7 +101,7 @@ class Config(object):
                               pretty_print=True)
 
     def __bool__(self):
-        d = Config(self.device, None)
+        d = Config(self.device, None, False)
         if self == d:
             return False
         else:
@@ -111,21 +112,21 @@ class Config(object):
             if ConfigCompatibility(self, other).is_compatible:
                 return Config(self.device,
                               NetconfCalculator(self.device,
-                                                self.ele, other.ele).add)
+                                                self.ele, other.ele).add, False)
         elif isinstance(other, ConfigDelta):
             if ConfigCompatibility(self, other).is_compatible:
                 return Config(self.device,
                               NetconfCalculator(self.device,
-                                                self.ele, other.nc).add)
+                                                self.ele, other.nc).add, False)
         elif etree.iselement(other):
             return Config(self.device,
-                          NetconfCalculator(self.device, self.ele, other).add)
+                          NetconfCalculator(self.device, self.ele, other).add, False)
         elif isinstance(other, Request):
             return Config(self.device,
-                          RestconfCalculator(self.device, self.ele, other).add)
+                          RestconfCalculator(self.device, self.ele, other).add, False)
         elif isinstance(other, SetRequest):
             return Config(self.device,
-                          gNMICalculator(self.device, self.ele, other).add)
+                          gNMICalculator(self.device, self.ele, other).add, False)
         else:
             return NotImplemented
 
@@ -454,26 +455,17 @@ class ConfigDelta(object):
         a transition.
 
     config_dst : `Config`
-        An instance of yang.ncdiff.Config, which is the destination config state
-        of a transition.
+        An instance of yang.ncdiff.Config, which is the destination config
+        state of a transition.
 
     nc : `Element`
         A lxml Element which contains the delta. This attribute can be used by
         ncclient edit_config() directly. It is the Netconf presentation of a
         ConfigDelta instance.
 
-    rc : `list`
-        A list of requests.models.Request instances. Each Request instance can
-        be used by prepare_request() in requests package. It is the Restconf
-        presentation of a ConfigDelta instance.
-
-    gnmi : `dict`
-        A gnmi_pb2.SetRequest instance. It is the gNMI presentation of a
-        ConfigDelta instance.
-
     ns : `dict`
-        A dictionary of namespaces used by the attribute 'nc'. Keys are prefixes
-        and values are URLs.
+        A dictionary of namespaces used by the attribute 'nc'. Keys are
+        prefixes and values are URLs.
 
     models : `list`
         A list of model names that self.roots belong to.
@@ -493,56 +485,76 @@ class ConfigDelta(object):
     preferred_delete : `str`
         Preferred operation of deleting an existing element. Choice of
         'delete' or 'remove'.
+
+    diff_type : `str`
+        Choice of 'minimum', 'minimum-replace' or 'replace'. This value has impact on attribute
+        nc. In general, there are two options to construct nc. The first
+        option is to find out minimal changes between config_src and
+        config_dst. Then attribute nc will reflect what needs to be modified.
+        The second option is to use 'replace' operation in Netconf. More
+        customers prefer 'replace' operation as it is more deterministic.
+
+    replace_depth : `int`
+        Specify the deepest level of replace operation when diff_type is
+        'replace'. Replace operation might be needed earlier before we reach
+        the specified level, depending on situations. Consider roots in a YANG
+        module are level 0, their children are level 1, and so on so forth.
+        The default value of replace_depth is 0.
+    
+    replace_xpath : `str` or `list`
+        Specify the xpath of the node to be replaced when diff_type is
+        'minimum-replace'. The default value of replace_xpath is None.
     '''
 
     def __init__(self, config_src, config_dst=None, delta=None,
                  preferred_create='merge',
                  preferred_replace='merge',
-                 preferred_delete='delete'):
+                 preferred_delete='delete',
+                 diff_type='minimum', replace_depth=0, replace_xpath=None):
         '''
         __init__ instantiates a ConfigDelta instance.
         '''
 
+        self.diff_type = diff_type
+        self.replace_depth = replace_depth
+        self.replace_xpath = replace_xpath
         if not isinstance(config_src, Config):
-            raise TypeError("argument 'config_src' must be " \
-                            "yang.ncdiff.Config, but not '{}'" \
+            raise TypeError("argument 'config_src' must be "
+                            "yang.ncdiff.Config, but not '{}'"
                             .format(type(config_src)))
         if preferred_create in ['merge', 'create', 'replace']:
             self.preferred_create = preferred_create
         else:
-            raise ValueError("only 'merge', 'create' or 'replace' are valid " \
+            raise ValueError("only 'merge', 'create' or 'replace' are valid "
                              "values of 'preferred_create'")
         if preferred_replace in ['merge', 'replace']:
             self.preferred_replace = preferred_replace
         else:
-            raise ValueError("only 'merge' or 'replace' are valid " \
+            raise ValueError("only 'merge' or 'replace' are valid "
                              "values of 'preferred_replace'")
         if preferred_delete in ['delete', 'remove']:
             self.preferred_delete = preferred_delete
         else:
-            raise ValueError("only 'delete' or 'remove' are valid " \
+            raise ValueError("only 'delete' or 'remove' are valid "
                              "values of 'preferred_delete'")
         self.config_src = config_src
         if delta is not None:
             if isinstance(delta, str) or etree.iselement(delta):
                 delta = NetconfParser(self.device, delta).ele
-            elif isinstance(delta, Request) or isinstance(delta, SetRequest):
-                delta = delta
             else:
-                raise TypeError("argument 'delta' must be XML string, " \
-                                "Element, requests.Request, or " \
-                                "gnmi_pb2.SetRequest, but not " \
-                                "'{}'".format(type(delta)))
+                raise TypeError("argument 'delta' must be XML string, "
+                                "Element, but not '{}'"
+                                .format(type(delta)))
         if not isinstance(config_dst, Config) and config_dst is not None:
-            raise TypeError("argument 'config_dst' must be " \
-                            "yang.ncdiff.Config or None, but not '{}'" \
+            raise TypeError("argument 'config_dst' must be "
+                            "yang.ncdiff.Config or None, but not '{}'"
                             .format(type(config_dst)))
         self.config_dst = config_dst
         if self.config_dst is None and delta is None:
-            raise ValueError("either 'config_dst' or 'delta' must present")
+            self.config_dst = self.config_src
         if delta is not None:
             if self.config_dst is not None:
-                logger.warning("argument 'config_dst' is ignored as 'delta' " \
+                logger.warning("argument 'config_dst' is ignored as 'delta' "
                                "is provided")
             self.config_dst = self.config_src + delta
         else:
@@ -554,21 +566,16 @@ class ConfigDelta(object):
 
     @property
     def nc(self):
-        return NetconfCalculator(self.device,
-                                 self.config_dst.ele, self.config_src.ele,
-                                 preferred_create=self.preferred_create,
-                                 preferred_replace=self.preferred_replace,
-                                 preferred_delete=self.preferred_delete).sub
-
-    @property
-    def rc(self):
-        return RestconfCalculator(self.device,
-                                  self.config_dst.ele, self.config_src.ele).sub
-
-    @property
-    def gnmi(self):
-        return gNMICalculator(self.device,
-                              self.config_dst.ele, self.config_src.ele).sub
+        return NetconfCalculator(
+            self.device,
+            self.config_dst.ele, self.config_src.ele,
+            preferred_create=self.preferred_create,
+            preferred_replace=self.preferred_replace,
+            preferred_delete=self.preferred_delete,
+            diff_type=self.diff_type,
+            replace_depth=self.replace_depth,
+            replace_xpath=self.replace_xpath,
+        ).sub
 
     @property
     def ns(self):
@@ -576,7 +583,7 @@ class ConfigDelta(object):
 
     @property
     def models(self):
-        return sorted(list(set(self.config_src.models + \
+        return sorted(list(set(self.config_src.models +
                                self.config_dst.models)))
 
     @property
@@ -591,10 +598,7 @@ class ConfigDelta(object):
 
     def __neg__(self):
         return ConfigDelta(config_src=self.config_dst,
-                           config_dst=self.config_src,
-                           preferred_create=self.preferred_create,
-                           preferred_replace=self.preferred_replace,
-                           preferred_delete=self.preferred_delete)
+                           config_dst=self.config_src)
 
     def __pos__(self):
         return self
@@ -629,6 +633,7 @@ class ConfigDelta(object):
 
     def __ne__(self, other):
         _cmperror(self, other)
+
 
 
 class ConfigCompatibility(object):
@@ -700,6 +705,8 @@ class ConfigCompatibility(object):
 
     @property
     def namespaces_compatible(self):
+        if self.config1.device == self.config2.device:
+            return True
 
         def check_models(models):
             for device in [self.config1.device, self.config2.device]:

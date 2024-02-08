@@ -695,7 +695,8 @@ class Netconf(manager.Manager, BaseConnection):
             exception.
         timeout : `int`, optional
             An optional keyed argument to set timeout value in seconds. Its
-            default value is 30 seconds.
+            default value is 30 seconds. If timeout is less than 30, 
+            timeout will use the default of 30 seconds.
         return_obj : `boolean`, optional
             Normally a string is returned as a reply. In other cases, we may
             want to return a RPCReply object, so we can access some attributes,
@@ -750,6 +751,9 @@ class Netconf(manager.Manager, BaseConnection):
             <version>16.3</version></native></data></rpc-reply>
             >>>
         '''
+
+        if timeout <= self.timeout:
+            timeout = self.timeout
 
         rpc = RawRPC(session=self.session,
                      device_handler=self._device_handler,

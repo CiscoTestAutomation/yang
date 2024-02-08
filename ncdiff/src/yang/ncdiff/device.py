@@ -1,5 +1,6 @@
 import os
 import re
+
 import logging
 from lxml import etree
 from ncclient import manager, operations, transport, xml_
@@ -7,7 +8,7 @@ from yang.connector import Netconf
 
 from .model import Model, ModelDownloader, ModelCompiler
 from .config import Config
-from .errors import ModelError, ModelMissing
+from .errors import ModelError, ModelMissing, ConfigError
 from .composer import Tag, Composer
 
 # create a logger for this module
@@ -65,12 +66,12 @@ class ModelDevice(Netconf):
         '''
         __init__ instantiates a ModelDevice instance.
         '''
-
         Netconf.__init__(self, *args, **kwargs)
         self.models = {}
         self.nodes = {}
         self.compiler = None
         self._models_loadable = None
+        self.namespaces_cache = None
 
     def __repr__(self):
         return '<{}.{} object at {}>'.format(self.__class__.__module__,
@@ -78,7 +79,10 @@ class ModelDevice(Netconf):
                                              hex(id(self)))
 
     @property
+    # extremely expensive call, cache
     def namespaces(self):
+        if self.namespaces_cache is not None:
+            return self.namespaces_cache
         if self.compiler is None:
             raise ValueError('please first call scan_models() to build '
                              'up supported namespaces of a device')
@@ -88,6 +92,7 @@ class ModelDevice(Netconf):
                 device_namespaces.append((m.get('id'),
                                           m.get('prefix'),
                                           m.findtext('namespace')))
+            self.namespaces_cache = device_namespaces
             return device_namespaces
 
     @property
@@ -565,7 +570,7 @@ class ModelDevice(Netconf):
         -------
 
         Element
-            A schema node, or None when nothing can be found.
+            A schema node.
 
         Raises
         ------
@@ -573,12 +578,15 @@ class ModelDevice(Netconf):
         ModelError
             If identifier is not unique in a namespace.
 
+        ConfigError
+            when nothing can be found.
+
 
         Code Example::
 
-            >>> device.nc.load_model('openconfig-interfaces')
-            >>> reply = device.nc.get_config(models='openconfig-interfaces')
-            >>> config = device.nc.extract_config(reply)
+            >>> m.load_model('openconfig-interfaces')
+            >>> reply = m.get_config(models='openconfig-interfaces')
+            >>> config = m.extract_config(reply)
             >>> print(config)
             ...
             >>> config.ns
@@ -586,25 +594,25 @@ class ModelDevice(Netconf):
             >>> config_nodes = config.xpath('/nc:config/oc-if:interfaces/oc-if:interface[oc-if:name="GigabitEthernet0/0"]')
             >>> config_node = config_nodes[0]
             >>>
-            >>> device.nc.get_schema_node(config_node)
+            >>> m.get_schema_node(config_node)
             <Element {http://openconfig.net/yang/interfaces}interface at 0xf11acfcc>
             >>>
         '''
 
         def get_child(parent, tag):
-            children = [i for i in parent.iter(tag=tag)
-                        if i.attrib['type'] != 'choice' and
-                        i.attrib['type'] != 'case' and
-                        is_parent(parent, i)]
+            children = [i for i in parent.iter(tag=tag) \
+                        if i.attrib['type'] != 'choice' and \
+                           i.attrib['type'] != 'case' and \
+                           is_parent(parent, i)]
             if len(children) == 1:
                 return children[0]
             elif len(children) > 1:
                 if parent.getparent() is None:
-                    raise ModelError("more than one root has tag '{}'"
+                    raise ModelError("more than one root has tag '{}'" \
                                      .format(tag))
                 else:
-                    raise ModelError("node {} has more than one child with "
-                                     "tag '{}'"
+                    raise ModelError("node {} has more than one child with " \
+                                     "tag '{}'" \
                                      .format(self.get_xpath(parent), tag))
             else:
                 return None
@@ -623,23 +631,28 @@ class ModelDevice(Netconf):
             return True
 
         n = Composer(self, config_node)
-        config_path = n.path
-        if ' '.join(config_path) in self.nodes:
-            return self.nodes[' '.join(config_path)]
-        if len(config_path) > 1:
+        path = n.path
+        config_path_str = ' '.join(path)
+        if config_path_str in self.nodes:
+            return self.nodes[config_path_str]
+        if len(path) > 1:
             parent = self.get_schema_node(config_node.getparent())
-            if parent is None:
-                return None
-            else:
-                child = get_child(parent, config_node.tag)
-                if child is not None:
-                    self.nodes[' '.join(config_path)] = child
-                return child
+            child = get_child(parent, config_node.tag)
+            if child is None:
+                raise ConfigError("unable to locate a child '{}' of {} in " \
+                                  "schema tree" \
+                                  .format(config_node.tag,
+                                          self.get_xpath(parent)))
+            self.nodes[config_path_str] = child
+            return child
         else:
             tree = self.models[n.model_name].tree
             child = get_child(tree, config_node.tag)
-            if child is not None:
-                self.nodes[' '.join(config_path)] = child
+            if child is None:
+                raise ConfigError("unable to locate a root '{}' in {} schema " \
+                                  "tree" \
+                                  .format(config_node.tag, n.model_name))
+            self.nodes[config_path_str] = child
             return child
 
     def get_model_name(self, node):
@@ -825,6 +838,42 @@ class ModelDevice(Netconf):
                 return default_ns, format_tag(convert(tag_ns), tag_name)
         else:
             raise ValueError("unknown value '{}' in class Tag".format(dst[1]))
+
+    def convert_ns(self, ns, src=Tag.NAMESPACE, dst=Tag.NAME):
+        '''convert_ns
+
+        High-level api: Convert from one namespace format, model name, model
+        prefix or model URL, to another namespace format.
+
+        Parameters
+        ----------
+
+        ns : `str`
+            A namespace, which can be model name, model prefix or model URL.
+
+        src : `int`
+            An int constant defined in class Tag, specifying the namespace
+            format of ns.
+
+        dst : `int`
+            An int constant defined in class Tag, specifying the namespace
+            format of return value.
+
+        Returns
+        -------
+
+        str
+            Converted namespace in a format specified by dst.
+        '''
+
+        matches = [t for t in self.namespaces if t[src] == ns]
+        if len(matches) == 0:
+            raise ValueError("{} '{}' is not claimed by this device" \
+                             .format(Tag.STR[src], ns))
+        if len(matches) > 1:
+            raise ValueError("more than one {} '{}' are claimed by this " \
+                             "device".format(Tag.STR[src], ns))
+        return matches[0][dst]
 
     def _get_ns(self, reply):
         '''_get_ns
