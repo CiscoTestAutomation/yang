@@ -695,8 +695,8 @@ class Netconf(manager.Manager, BaseConnection):
             exception.
         timeout : `int`, optional
             An optional keyed argument to set timeout value in seconds. Its
-            default value is 30 seconds. If self.timeout is bigger than 30, 
-            timeout will use self.timeout.
+            default value is 30 seconds. If timeout is less than 30, 
+            timeout will use the default of 30 seconds.
         return_obj : `boolean`, optional
             Normally a string is returned as a reply. In other cases, we may
             want to return a RPCReply object, so we can access some attributes,
