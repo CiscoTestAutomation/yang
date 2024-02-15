@@ -2,7 +2,7 @@
 """ Unit tests for the ncdiff cisco-shared package. """
 
 import unittest
-from ncdiff import RunningConfigDiff
+from yang.ncdiff import RunningConfigDiff
 
 
 class TestRunningConfig(unittest.TestCase):
