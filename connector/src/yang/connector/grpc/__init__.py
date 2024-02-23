@@ -1,5 +1,6 @@
 import logging
 import tempfile
+import ipaddress
 from importlib import import_module
 from shutil import copyfile
 
@@ -75,11 +76,16 @@ class Grpc(BaseConnection):
         dev_args = self.connection_info
         self.log = log
         self.log.setLevel(logging.INFO)
-
+        self.proxy = dev_args.get('sshtunnel', {}).get('host')
+        self.source_address = kwargs.get('source_address')
         protocol = dev_args.get('protocol', 'grpc').lower()
         if protocol != 'grpc':
             msg = f"Invalid protocol {protocol}"
             raise TypeError(msg)
+        if 'source_vrf' in kwargs:
+            self.vrf = kwargs.get('source_vrf')
+        else:
+            self.vrf = self.device.management.get('vrf')  
 
         self.username = dev_args.get('username', '')
         self.password = dev_args.get('password', '')
