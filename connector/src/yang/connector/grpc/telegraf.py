@@ -2,9 +2,12 @@ import logging
 import socket
 import configparser
 import subprocess
+import re
 
 from pyats.easypy import runtime
 from unicon.bases.connection import Connection
+from unicon.sshutils import sshtunnel
+
 
 from . import Grpc
 
@@ -106,7 +109,6 @@ class Grpc(Grpc):
                     with open(self.config_file, 'w') as f:
                         log.info(f"Updating {self.config_file}")
                         config.write(f)
-
         # exit context manager to release port
         # spawn telegraf/pipeline using config
         if subprocess.run(['which', 'telegraf']).returncode == 0:
@@ -115,7 +117,27 @@ class Grpc(Grpc):
             log.info(f"Telegraf is running as PID {self.transport_process.pid} on port {allocated_port}")
         else:
             raise OSError('Telegraf is not installed')
-
+        if self.proxy:
+            # connect to proxy 
+            try:
+                self.proxy_dev = self.device.testbed.devices[self.proxy]
+            except KeyError:
+                log.info('The proxy is not defined in the testbed devices. searching the servers')
+                self.proxy_dev = self.device.api.convert_server_to_linux_device(self.proxy)
+            #connect to proxy
+            self.proxy_dev.connect()
+            # add a remote tunnel on the proxy for the allocated port on the execution host
+            remote_tunnel_port = sshtunnel.add_tunnel(proxy_conn=self.proxy_dev.connectionmgr.connections.cli, tunnel_type='remote', target_port=allocated_port)
+            # create a proxy port on the proxy using socat api for redirecting traffic to the port for remote tunnel 
+            self.proxy_port, self.process_pid = self.proxy_dev.api.start_socat_relay('127.0.0.1', remote_tunnel_port)
+            mgmt_ip = self.source_address or self.device.management.get('address', {}).get('ipv4')
+            if mgmt_ip:
+                #check and return the Ipv4address for mgmt_ip
+                ipv4 = self.proxy_dev.api.get_valid_ipv4_address(mgmt_ip)
+                #get the proxy ip from routing table
+                proxy_ip = self.proxy_dev.api.get_ip_route_for_ipv4(ipv4)
+            else:
+                raise Exception('There is no ipv4 defined under management in the testbed or the source address provided is not valid.')
         if self.telemetry_autoconfigure:
             # check if there is an existing unicon connection
             active_connection = None
@@ -135,16 +157,28 @@ class Grpc(Grpc):
 
             # run configurations while ensuring that it is using a unicon default connection
             with self.device.temp_default_alias(active_connection):
+                # the ip for receiving data which will be configured on the device this could be the ip of 
+                # the proxy connected to device or the ip of the execution host or transporter 
                 local_ip = self.transporter_ip or self.device.api.get_local_ip()
                 self.device.api.configure_netconf_yang()
-                self.device.api.configure_telemetry_ietf_parameters(self.telemetry_subscription_id,
-                                                                    "yang-push", local_ip, allocated_port, "grpc-tcp")
+                if self.proxy:
+                    receiver_ip = proxy_ip 
+                    self.device.api.configure_telemetry_ietf_parameters(sub_id=self.telemetry_subscription_id, stream="yang-push", receiver_ip=receiver_ip,
+                                                                        receiver_port=self.proxy_port, protocol="grpc-tcp", source_vrf=self.vrf)
+                else:
+                    receiver_ip = local_ip 
+                    self.device.api.configure_telemetry_ietf_parameters(sub_id=self.telemetry_subscription_id,stream="yang-push",
+                                                                        receiver_ip=receiver_ip, receiver_port=allocated_port, protocol="grpc-tcp", source_vrf=self.vrf)       
 
             self.device.connections['grpc'].update({
-                'transporter_ip': local_ip,
+                'transporter_ip': receiver_ip,
                 'transporter_port': allocated_port
             })
-            log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
+            if self.proxy:
+                log.info('Using proxy for connecting to the transporter')
+                log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port} via {proxy_ip}:{self.proxy_port}")
+            else:
+                log.info(f"Started gRPC inbound server on {local_ip}:{allocated_port}")
         else:
             self.device.connections['grpc'].update({
                 'transporter_ip': "0.0.0.0",
@@ -157,6 +191,9 @@ class Grpc(Grpc):
         Terminates the running telegraf process on the local machine, deconfigures the subscription from the device
         and disconnects from the subordinate CLI connection
         """
+        if self.proxy:
+            self.proxy_dev.api.stop_socat_relay(self.process_pid)
+            
         self.transport_process.terminate()
         if self.telemetry_autoconfigure:
             self.device.api.unconfigure_telemetry_ietf_subscription(self.telemetry_subscription_id)
