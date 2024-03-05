@@ -501,6 +501,7 @@ class Netconf(manager.Manager, BaseConnection):
             'hostkey_verify': False,
             'look_for_keys': False,
             'ssh_config': None,
+            'keepalive': False,
             }
         defaults.update(self.connection_info)
 
