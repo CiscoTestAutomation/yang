@@ -3,6 +3,7 @@
 
 import unittest
 from lxml import etree
+
 from yang.ncdiff.device import ModelDevice
 from yang.ncdiff.config import Config, ConfigDelta
 from yang.ncdiff.errors import ConfigDeltaError
@@ -13,6 +14,8 @@ from pyats.topology import loader
 from ncclient import operations, xml_
 from ncclient.manager import Manager
 from ncclient.devices.default import DefaultDeviceHandler
+
+from yang.ncdiff.composer import Composer
 
 nc_url = xml_.BASE_NS_1_0
 yang_url = 'urn:ietf:params:xml:ns:yang:1'
@@ -2941,6 +2944,61 @@ class TestNcDiff(unittest.TestCase):
                               '/oc-eth:ethernet/oc-eth:config'
                               '/oc-eth:port-speed/text()')
         self.assertEqual(result, ['SPEED_10MB'])
+
+    def test_keys_order(self):
+        config_xml1 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <foo xmlns="urn:jon">abc</foo>
+                <tracking xmlns="urn:jon">
+                  <enabled>true</enabled>
+                </tracking>
+                <address xmlns="urn:jon">
+                  <last>Bob</last>
+                  <first>Brown</first>
+                  <street>Innovation</street>
+                  <city>New York</city>
+                </address>
+                <store xmlns="urn:jon">Dollar</store>
+                <store xmlns="urn:jon">Cheap</store>
+                <store xmlns="urn:jon">Quick</store>
+              </data>
+            </rpc-reply>
+            """
+        config_xml2 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <foo xmlns="urn:jon">edf</foo>
+                <tracking xmlns="urn:jon">
+                  <enabled>false</enabled>
+                </tracking>
+                <address xmlns="urn:jon">
+                  <last>Bob</last>
+                  <first>Brown</first>
+                  <street>Innovation</street>
+                  <city>New York</city>
+                </address>
+                <address xmlns="urn:jon">
+                  <last>Paul</last>
+                  <first>Higashi</first>
+                  <street>Express</street>
+                  <city>Kanata</city>
+                </address>
+                <store xmlns="urn:jon">Dollar</store>
+                <store xmlns="urn:jon">Cheap</store>
+              </data>
+            </rpc-reply>
+            """
+        config1 = Config(self.d, config_xml1)
+        config2 = Config(self.d, config_xml2)
+        delta = config2 - config1
+
+        address = delta.nc.xpath('//nc:config/jon:address',
+                                 namespaces=delta.ns)
+        com = Composer(self.d, address[0])
+        self.assertEqual(com.keys[0], '{urn:jon}first')
+        self.assertEqual(com.keys[1], '{urn:jon}last')
+
 
     def test_filter_1(self):
         xml1 = """
