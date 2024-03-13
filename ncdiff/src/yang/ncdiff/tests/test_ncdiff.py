@@ -2996,9 +2996,8 @@ class TestNcDiff(unittest.TestCase):
         address = delta.nc.xpath('//nc:config/jon:address',
                                  namespaces=delta.ns)
         com = Composer(self.d, address[0])
-        self.assertEqual(com.keys[0], '{urn:jon}first')
-        self.assertEqual(com.keys[1], '{urn:jon}last')
-
+        expected_keys = ['{urn:jon}first', '{urn:jon}last']
+        self.assertEqual(com.keys, expected_keys)
 
     def test_filter_1(self):
         xml1 = """
