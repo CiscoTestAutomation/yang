@@ -252,6 +252,97 @@ vrf definition generic
         for actual_line, expected_line in zip(actual_lines, expected_lines):
             self.assertEqual(actual_line, expected_line)
 
+    def test_diff_6(self):
+        config_1 = """
+router lisp
+ locator-set RLOC
+  IPv4-interface Loopback1 priority 100 weight 50
+  exit
+ !
+ exit
+!
+        """
+        config_2 = """
+router lisp
+ locator-set RLOC
+  IPv4-interface Loopback1 priority 100 weight 50
+  exit-locator-set
+ !
+ exit-router-lisp
+!
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+
+    def test_diff_7(self):
+        config_1 = """
+ip dhcp pool REIAGuestVLAN
+  network 11.255.0.0 255.255.0.0
+  dns-server 1.134.28.1 9.218.88.8
+  default-router 11.255.67.1
+  lease 0 4
+        """
+        config_2 = """
+ip dhcp pool REIAGuestVLAN
+  network 11.255.0.0 255.255.0.0
+  default-router 11.255.67.1
+  dns-server 1.134.28.1 9.218.88.8
+  lease 0 4
+        """
+
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+
+    def test_diff_8(self):
+        config_1 = """
+router eigrp 100
+ timers active-time 55
+ timers graceful-restart purge-time 77
+ metric maximum-hops 5
+ metric weights 0 2 2 2 2 2
+ maximum-paths 3
+ variance 99
+ default-metric 100 100 100 100 100
+ summary-metric 7.7.0.0/16 7 7 7 7 7 distance 7
+ default-information in acl1
+ redistribute connected metric 2 2 2 2 2 route-map connected
+ redistribute eigrp 10 metric 3 3 3 3 3 route-map eigrp
+ redistribute isis isis1 level-2 metric 9 9 9 9 9 route-map isis1
+ redistribute isis level-1 metric 5 5 5 5 5 route-map isis
+ redistribute lisp metric 4 4 4 4 4 route-map lisp
+ redistribute rip metric 120 120 120 120 120 route-map rip
+        """
+        config_2 = """
+router eigrp 100
+ timers active-time 55
+ timers graceful-restart purge-time 77
+ metric maximum-hops 5
+ metric weights 0 2 2 2 2 2
+ maximum-paths 3
+ variance 99
+ default-metric 100 100 100 100 100
+ summary-metric 7.7.0.0/16 7 7 7 7 7 distance 7
+ default-information in acl1
+ redistribute connected metric 2 2 2 2 2 route-map connected
+ redistribute rip metric 120 120 120 120 120 route-map rip
+ redistribute eigrp 10 metric 3 3 3 3 3 route-map eigrp
+ redistribute isis level-1 metric 5 5 5 5 5 route-map isis
+ redistribute isis isis1 level-2 metric 9 9 9 9 9 route-map isis1
+ redistribute lisp metric 4 4 4 4 4 route-map lisp
+        """
+
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+
     def test_cli_short_no_commands(self):
         config_1 = """
 vrf definition genericstring
@@ -525,6 +616,113 @@ interface Vlan70
             running1=config_1,
             running2=config_2,
         )
+        self.assertTrue(running_diff)
+        actual_cli = running_diff.cli.strip()
+        expected_cli = expected_cli.strip()
+        actual_lines = actual_cli.split('\n')
+        expected_lines = expected_cli.split('\n')
+        self.assertEqual(len(actual_lines), len(expected_lines))
+        for actual_line, expected_line in zip(actual_lines, expected_lines):
+            self.assertEqual(actual_line.strip(), expected_line.strip())
+
+        actual_reverse_cli = running_diff.cli_reverse.strip()
+        expected_reverse_cli = expected_reverse_cli.strip()
+        actual_lines = actual_reverse_cli.split('\n')
+        expected_lines = expected_reverse_cli.split('\n')
+        self.assertEqual(len(actual_lines), len(expected_lines))
+        for actual_line, expected_line in zip(actual_lines, expected_lines):
+            self.assertEqual(actual_line.strip(), expected_line.strip())
+
+    def test_cli_snmp_server_manager(self):
+        config_1 = """
+snmp-server manager
+snmp-server manager session-timeout 100
+        """
+        config_2 = """
+        """
+        expected_cli = """
+no snmp-server manager
+        """
+        expected_reverse_cli = """
+snmp-server manager
+snmp-server manager session-timeout 100
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertTrue(running_diff)
+        actual_cli = running_diff.cli.strip()
+        expected_cli = expected_cli.strip()
+        actual_lines = actual_cli.split('\n')
+        expected_lines = expected_cli.split('\n')
+        self.assertEqual(len(actual_lines), len(expected_lines))
+        for actual_line, expected_line in zip(actual_lines, expected_lines):
+            self.assertEqual(actual_line.strip(), expected_line.strip())
+
+        actual_reverse_cli = running_diff.cli_reverse.strip()
+        expected_reverse_cli = expected_reverse_cli.strip()
+        actual_lines = actual_reverse_cli.split('\n')
+        expected_lines = expected_reverse_cli.split('\n')
+        self.assertEqual(len(actual_lines), len(expected_lines))
+        for actual_line, expected_line in zip(actual_lines, expected_lines):
+            self.assertEqual(actual_line.strip(), expected_line.strip())
+
+    def test_cli_logging_dmvpn(self):
+        config_1 = """
+no logging dmvpn
+        """
+        config_2 = """
+logging dmvpn rate-limit 200
+        """
+        expected_cli = """
+logging dmvpn rate-limit 200
+        """
+        expected_reverse_cli = """
+no logging dmvpn
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+
+        self.assertTrue(running_diff)
+        actual_cli = running_diff.cli.strip()
+        expected_cli = expected_cli.strip()
+        actual_lines = actual_cli.split('\n')
+        expected_lines = expected_cli.split('\n')
+        self.assertEqual(len(actual_lines), len(expected_lines))
+        for actual_line, expected_line in zip(actual_lines, expected_lines):
+            self.assertEqual(actual_line.strip(), expected_line.strip())
+
+        actual_reverse_cli = running_diff.cli_reverse.strip()
+        expected_reverse_cli = expected_reverse_cli.strip()
+        actual_lines = actual_reverse_cli.split('\n')
+        expected_lines = expected_reverse_cli.split('\n')
+        self.assertEqual(len(actual_lines), len(expected_lines))
+        for actual_line, expected_line in zip(actual_lines, expected_lines):
+            self.assertEqual(actual_line.strip(), expected_line.strip())
+
+    def test_cli_exception_crashinfo(self):
+        config_1 = """
+no exception crashinfo
+        """
+        config_2 = """
+exception crashinfo file bootflash:test
+exception crashinfo buffersize 33
+        """
+        expected_cli = """
+exception crashinfo file bootflash:test
+exception crashinfo buffersize 33
+        """
+        expected_reverse_cli = """
+no exception crashinfo
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+
         self.assertTrue(running_diff)
         actual_cli = running_diff.cli.strip()
         expected_cli = expected_cli.strip()
@@ -1007,6 +1205,75 @@ flow exporter meraki_exporter
         self.assertEqual(running_diff.cli, '')
         self.assertEqual(running_diff.cli_reverse, '')
 
+    def test_l2nat_instance_1(self):
+        config_1 = """
+l2nat instance test
+  inside from host 3.3.3.2 to 6.6.6.2
+  inside from host 3.3.3.1 to 6.6.6.1
+        """
+        config_2 = """
+l2nat instance test
+  inside from host 3.3.3.1 to 6.6.6.1
+  inside from host 3.3.3.2 to 6.6.6.2
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_l2nat_instance_2(self):
+        config_1 = """
+l2nat instance test1
+  inside from network 2.2.2.0 to 3.3.3.0 mask 255.255.255.0
+  outside from network 4.4.4.0 to 5.5.5.0 mask 255.255.255.0
+l2nat instance test2
+  inside from host 3.3.3.2 to 6.6.6.2
+  inside from host 3.3.3.1 to 6.6.6.1
+        """
+        config_2 = """
+l2nat instance test2
+  inside from host 3.3.3.2 to 6.6.6.2
+  inside from host 3.3.3.1 to 6.6.6.1
+l2nat instance test1
+  outside from network 4.4.4.0 to 5.5.5.0 mask 255.255.255.0
+  inside from network 2.2.2.0 to 3.3.3.0 mask 255.255.255.0
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_l2nat_instance_3(self):
+        config_1 = """
+l2nat instance test
+  inside from range 2.2.2.1 to 3.3.3.1 5
+  outside from range 3.3.3.10 to 2.2.2.10 5
+        """
+        config_2 = """
+l2nat instance test
+  outside from range 3.3.3.10 to 2.2.2.10 5
+  inside from range 2.2.2.1 to 3.3.3.1 5
+        """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
     def test_exporter(self):
         config_1 = """
 flow monitor meraki_monitor
@@ -1084,6 +1351,160 @@ flow record fr_ipv6
 flow record fr_1
   match ipv6 protocol
 """
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_neighbor(self):
+        config_1 = """
+router bgp 1.1
+  neighbor T1-ASN64901 peer-group
+  neighbor T1-ASN64901 remote-as 64901
+  neighbor T1-ASN64901 timers 5 15
+  neighbor T1-ASN2.101 peer-group
+  neighbor T1-ASN2.101 remote-as 2.101
+  neighbor 68.121.245.1 peer-group T1-ASN1.101
+  neighbor 68.121.245.1 description ba8344-627f8e-agg-t1-a-1
+  neighbor 68.121.245.13 peer-group T1-ASN1.101
+  neighbor 68.121.245.13 description ba8344-627f8e-agg-t1-a-4
+  neighbor 68.121.245.53 peer-group T1-ASN1.107
+  neighbor 68.121.245.53 description ba8344-627f8e-agg-t1-a-14
+  neighbor 68.121.245.57 peer-group T1-ASN1.108
+  neighbor 68.121.245.57 description ba8344-627f8e-agg-t1-a-15
+  address-family ipv4
+    neighbor T1-ASN64901 send-community both
+    neighbor T1-ASN64901 advertisement-interval 1
+    neighbor T1-ASN64901 allowas-in
+    neighbor T1-ASN2.101 send-community both
+    neighbor T1-ASN2.101 advertisement-interval 1
+    neighbor T1-ASN2.101 allowas-in
+    no neighbor 68.121.245.2 activate
+    no neighbor 68.121.245.1 activate
+"""
+        config_2 = """
+router bgp 1.1
+  neighbor T1-ASN2.101 peer-group
+  neighbor T1-ASN2.101 remote-as 2.101
+  neighbor T1-ASN64901 peer-group
+  neighbor T1-ASN64901 remote-as 64901
+  neighbor T1-ASN64901 timers 5 15
+  neighbor 68.121.245.1 peer-group T1-ASN1.101
+  neighbor 68.121.245.1 description ba8344-627f8e-agg-t1-a-1
+  neighbor 68.121.245.13 peer-group T1-ASN1.101
+  neighbor 68.121.245.13 description ba8344-627f8e-agg-t1-a-4
+  neighbor 68.121.245.53 peer-group T1-ASN1.107
+  neighbor 68.121.245.53 description ba8344-627f8e-agg-t1-a-14
+  neighbor 68.121.245.57 peer-group T1-ASN1.108
+  neighbor 68.121.245.57 description ba8344-627f8e-agg-t1-a-15
+  address-family ipv4
+    neighbor T1-ASN2.101 send-community both
+    neighbor T1-ASN2.101 advertisement-interval 1
+    neighbor T1-ASN2.101 allowas-in
+    no neighbor 68.121.245.1 activate
+    no neighbor 68.121.245.2 activate
+    neighbor T1-ASN64901 send-community both
+    neighbor T1-ASN64901 advertisement-interval 1
+    neighbor T1-ASN64901 allowas-in
+"""
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_crypto_keyring(self):
+        config_1 = """
+crypto keyring keyring-vpn-0528f5d5eda5c3dda-1
+ local-address 37.224.37.242
+ pre-shared-key address 54.77.46.189 key Test
+crypto keyring keyring-vpn-0528f5d5eda5c3dda-2
+ local-address 37.224.37.242
+ pre-shared-key address 54.77.46.189 key Test
+"""
+        config_2 = """
+crypto keyring keyring-vpn-0528f5d5eda5c3dda-2
+ local-address 37.224.37.242
+ pre-shared-key address 54.77.46.189 key Test
+crypto keyring keyring-vpn-0528f5d5eda5c3dda-1
+ local-address 37.224.37.242
+ pre-shared-key address 54.77.46.189 key Test
+"""
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_ip_helper_address(self):
+        config_1 = """
+interface Vlan266
+  ip helper-address 90.214.179.170
+  ip helper-address 90.214.180.36
+"""
+        config_2 = """
+interface Vlan266
+  ip helper-address 90.214.180.36
+  ip helper-address 90.214.179.170
+"""
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_route_target(self):
+        config_1 = """
+vrf definition provider
+  route-target export 65002:1
+  route-target export 65002:3001
+  route-target import 65002:1
+  route-target import 65002:3001
+"""
+        config_2 = """
+
+vrf definition provider
+  route-target export 65002:3001
+  route-target export 65002:1
+  route-target import 65002:3001
+  route-target import 65002:1
+"""
+        running_diff = RunningConfigDiff(
+            running1=config_1,
+            running2=config_2,
+        )
+        self.assertFalse(running_diff)
+        self.assertEqual(running_diff.diff, None)
+        self.assertEqual(running_diff.diff_reverse, None)
+        self.assertEqual(running_diff.cli, '')
+        self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_cli_vlan_group(self):
+        config_1 = """
+vlan group test1 vlan-list 2,200
+vlan group test2 vlan-list 1-4094
+        """
+        config_2 = """
+vlan group test2 vlan-list 1-4094
+vlan group test1 vlan-list 2,200
+        """
         running_diff = RunningConfigDiff(
             running1=config_1,
             running2=config_2,

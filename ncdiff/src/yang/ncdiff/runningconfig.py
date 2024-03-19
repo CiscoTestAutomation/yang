@@ -16,6 +16,23 @@ SHORT_NO_COMMANDS = [
     'no ipv6 address ',
 ]
 
+# Normally two positive commands, when one contains the other, cannot coexist.
+# For example:
+# exception crashinfo
+# exception crashinfo file bootflash:test
+#
+# Only the longer one is required:
+# exception crashinfo file bootflash:test
+#
+# But there are special cases do not follow this rule. Both lines are required:
+# snmp-server manager
+# snmp-server manager session-timeout 100
+#
+# These cases can be recorded here.
+COEXIST_SHORT_POSITIVE_COMMANDS = [
+    'snmp-server manager',
+]
+
 # Some commands are orderless, e.g., "show running-config" output could be:
 # aaa authentication login admin-con group tacacs+ local
 # aaa authentication login admin-vty group tacacs+ local
@@ -42,11 +59,11 @@ SHORT_NO_COMMANDS = [
 # Here the config "exporter" at the second level is orderless. so regexp and
 # depth are defined as "^ *exporter " and 1.
 ORDERLESS_COMMANDS = [
-    (re.compile(r'^ *aaa authentication login '), 0),
+    (re.compile(r'^ *aaa authentication '), 0),
     (re.compile(r'^ *logging host '), 0),
     (re.compile(r'^ *flow monitor '), 0),
     (re.compile(r'^ *service-template '), 0),
-    (re.compile(r'^ *aaa group server radius '), 0),
+    (re.compile(r'^ *aaa group server '), 0),
     (re.compile(r'^ *flow exporter '), 0),
     (re.compile(r'^ *exporter '), 1),
     (re.compile(r'^ *username '), 0),
@@ -54,6 +71,25 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *match ipv4 '), 1),
     (re.compile(r'^ *match ipv6 '), 1),
     (re.compile(r'^ *collect connection '), 1),
+    (re.compile(r'^ *l2nat instance '), 0),
+    (re.compile(r'^ *inside from host '), 1),
+    (re.compile(r'^ *outside from host '), 1),
+    (re.compile(r'^ *inside from network '), 1),
+    (re.compile(r'^ *outside from network '), 1),
+    (re.compile(r'^ *inside from range '), 1),
+    (re.compile(r'^ *outside from range '), 1),
+    (re.compile(r'^ *neighbor '), 1),
+    (re.compile(r'^ *neighbor '), 2),
+    (re.compile(r'^ *no neighbor '), 2),
+    (re.compile(r'^ *crypto keyring '), 0),
+    (re.compile(r'^ *ip helper-address '), 1),
+    (re.compile(r'^ *route-target import '), 1),
+    (re.compile(r'^ *route-target export '), 1),
+    (re.compile(r'^ *dns-server '), 1),
+    (re.compile(r'^ *default-router '), 1),
+    (re.compile(r'^ *lease '), 1),
+    (re.compile(r'^ *vlan group '), 0),
+    (re.compile(r'^ *redistribute '), 1),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
@@ -101,6 +137,32 @@ MISSING_INDENT_COMMANDS = [
     r'^ *client ',
 ]
 
+# Sometimes there are NVGEN issues that one config state having multiple
+# running-config presentations:
+# router lisp
+#  locator-set RLOC
+#   IPv4-interface Loopback1 priority 100 weight 50
+#   exit
+#  !
+#  exit
+# !
+#
+# This exact config may show up in a different way:
+# router lisp
+#  locator-set RLOC
+#   IPv4-interface Loopback1 priority 100 weight 50
+#   exit-locator-set
+#  !
+#  exit-router-lisp
+# !
+#
+# To workaround this, we can define a tuple to replace "exit-locator-set" with
+# "exit" for example.
+REPLACING_COMMANDS = [
+    ('exit-locator-set', 'exit'),
+    ('exit-router-lisp', 'exit'),
+    ('exit-address-family', ' exit-address-family'),
+]
 
 class ListDiff(object):
     '''ListDiff
@@ -300,10 +362,9 @@ class RunningConfigDiff(object):
             return ''
 
     def running2list(self, str_in_1, str_in_2):
-        str_in_1 = str_in_1.replace('exit-address-family',
-                                    ' exit-address-family')
-        str_in_2 = str_in_2.replace('exit-address-family',
-                                    ' exit-address-family')
+        for cmd in REPLACING_COMMANDS:
+            str_in_1 = str_in_1.replace(*cmd)
+            str_in_2 = str_in_2.replace(*cmd)
         list_1 = self.config2list(str_in_1)
         list_2 = self.config2list(str_in_2)
         return self.handle_orderless(list_1, list_2, 0)
@@ -492,6 +553,10 @@ class RunningConfigDiff(object):
         for cmd_list in [positive_list, negative_list]:
             self.remove_duplicate_cammands(cmd_list)
 
+        # Remove some unnecessary commands
+        self.remove_unnecessary_negative_commands(negative_list)
+        self.remove_unnecessary_positive_commands(positive_list)
+
         return '\n'.join(positive_list), '\n'.join(reversed(negative_list))
 
     @staticmethod
@@ -625,6 +690,48 @@ class RunningConfigDiff(object):
                     break
             if tup[1] is not None:
                 RunningConfigDiff.handle_sibling_cammands(tup[1])
+
+    @staticmethod
+    def remove_unnecessary_negative_commands(negative_list):
+        cmds = [i for i, c in enumerate(negative_list)
+                if '\n' not in c]
+        indexes = set()
+        for idx1_tmp, idx1 in enumerate(cmds):
+            c1 = negative_list[idx1]
+            for idx2_tmp in range(idx1_tmp + 1, len(cmds)):
+                idx2 = cmds[idx2_tmp]
+                c2 = negative_list[idx2]
+                if c1 == c2 or len(c1) == len(c2):
+                    continue
+                if len(c1) < len(c2):
+                    if c1 == c2[:len(c1)]:
+                        indexes.add(idx2)
+                elif c1[:len(c2)] == c2:
+                    indexes.add(idx1)
+        if indexes:
+            for idx in reversed(list(indexes)):
+                del negative_list[idx]
+
+    @staticmethod
+    def remove_unnecessary_positive_commands(positive_list):
+        cmds = [i for i, c in enumerate(positive_list)
+                if '\n' not in c and c not in COEXIST_SHORT_POSITIVE_COMMANDS]
+        indexes = set()
+        for idx1_tmp, idx1 in enumerate(cmds):
+            c1 = positive_list[idx1]
+            for idx2_tmp in range(idx1_tmp + 1, len(cmds)):
+                idx2 = cmds[idx2_tmp]
+                c2 = positive_list[idx2]
+                if c1 == c2 or len(c1) == len(c2):
+                    continue
+                if len(c1) < len(c2):
+                    if c1 == c2[:len(c1)]:
+                        indexes.add(idx1)
+                elif c1[:len(c2)] == c2:
+                    indexes.add(idx2)
+        if indexes:
+            for idx in reversed(list(indexes)):
+                del positive_list[idx]
 
     def indent(self, str_in):
         str_ret = ''
