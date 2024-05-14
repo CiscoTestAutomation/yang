@@ -90,6 +90,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *lease '), 1),
     (re.compile(r'^ *vlan group '), 0),
     (re.compile(r'^ *redistribute '), 1),
+    (re.compile(r'^ *redistribute '), 2),
     (re.compile(r'^ *redistribute '), 3),
     (re.compile(r'^ *distribute-list '), 1),
 ]
