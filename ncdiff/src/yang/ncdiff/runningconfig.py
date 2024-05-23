@@ -93,6 +93,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *redistribute '), 2),
     (re.compile(r'^ *redistribute '), 3),
     (re.compile(r'^ *distribute-list '), 1),
+    (re.compile(r'^ *device-tracking binding '), 0),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
