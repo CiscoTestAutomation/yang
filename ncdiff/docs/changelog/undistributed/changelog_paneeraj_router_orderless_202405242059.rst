@@ -3,4 +3,4 @@
 --------------------------------------------------------------------------------
 * yang.ncdiff
     * Updated Router orderless configuration:
-        * Added  with depth 0 
+        * Added router with depth 0 
