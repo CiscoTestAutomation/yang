@@ -1,8 +1,6 @@
-
 --------------------------------------------------------------------------------
                                 Fix
 --------------------------------------------------------------------------------
 * yang.ncdiff
-    * Updated orderless configuration:
-        * Added redistribute under address-family in router eigrp
-
+    * Updated Router orderless configuration:
+        * Added router with depth 0 
