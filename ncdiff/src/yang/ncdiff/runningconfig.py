@@ -93,6 +93,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *redistribute '), 2),
     (re.compile(r'^ *redistribute '), 3),
     (re.compile(r'^ *distribute-list '), 1),
+    (re.compile(r'^ *mpls mldp static '), 0),
     (re.compile(r'^ *router '), 0),
 ]
 
