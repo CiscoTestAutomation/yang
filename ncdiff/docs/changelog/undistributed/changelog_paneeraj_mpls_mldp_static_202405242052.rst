@@ -1,8 +1,6 @@
-
 --------------------------------------------------------------------------------
                                 Fix
 --------------------------------------------------------------------------------
 * yang.ncdiff
     * Updated orderless configuration:
-        * Added redistribute under address-family in router eigrp
-
+        * Added mpls mldp static with depth 0 
