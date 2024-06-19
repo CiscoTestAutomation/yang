@@ -97,7 +97,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *mpls mldp static '), 0),
     (re.compile(r'^ *router '), 0),
     (re.compile(r'^ *summary-address '), 1),
-    (re.compile(r'^ *mobile-network '), 5),
+    (re.compile(r'^ *mobile-network '), 4),
     (re.compile(r'^ *ospfv3 neighbor '), 1),
     (re.compile(r'^ *ospfv3 1 ipv(\d) neighbor'), 1),
     (re.compile(r'^ *area '), 1),
