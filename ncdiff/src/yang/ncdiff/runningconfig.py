@@ -98,6 +98,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *router '), 0),
     (re.compile(r'^ *summary-address '), 1),
     (re.compile(r'^ *distribute-list '), 2),
+    (re.compile(r'^ *area '), 1),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
