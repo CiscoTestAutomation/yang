@@ -97,7 +97,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *mpls mldp static '), 0),
     (re.compile(r'^ *router '), 0),
     (re.compile(r'^ *summary-address '), 1),
-    (re.compile(r'^ *distribute-list 1300 out '), 2),
+    (re.compile(r'^ *distribute-list '), 2),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
