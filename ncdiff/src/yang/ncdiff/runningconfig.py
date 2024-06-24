@@ -97,6 +97,8 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *mpls mldp static '), 0),
     (re.compile(r'^ *router '), 0),
     (re.compile(r'^ *summary-address '), 1),
+    (re.compile(r'^ *distribute-list '), 2),
+    (re.compile(r'^ *area '), 1),
     (re.compile(r'^ *ip ospf message-digest-key '), 1),
 ]
 
