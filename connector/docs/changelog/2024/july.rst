@@ -24,3 +24,9 @@ Upgrade Instructions
 
 Changelogs
 ^^^^^^^^^^
+--------------------------------------------------------------------------------
+                                Fix
+--------------------------------------------------------------------------------
+* yang.ncdiff
+    * Updated orderless configuration:
+        * Added distribute-list 1300 out with depth 2
