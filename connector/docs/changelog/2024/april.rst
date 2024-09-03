@@ -12,6 +12,14 @@ April 2024
 | ``yang.connector ``           | 24.4                          |
 +-------------------------------+-------------------------------+
 
+Upgrade Instructions
+^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+    pip install --upgrade yang.connector
+
+
 
 
 Changelogs
