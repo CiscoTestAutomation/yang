@@ -1,6 +1,6 @@
 # Variables
 ROOTDIR       = $(shell pwd)
-ALL_CMDS      = package test distribute distribute_staging distribute_staging_external clean develop undevelop docs
+ALL_CMDS      = package test distribute distribute_staging distribute_staging_external clean develop undevelop docs changelogs
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
         develop undevelop populate_dist_dir help docs distribute_docs test
