@@ -3,7 +3,7 @@ configs, and predict config when a diff is applied on a config. A config is the
 payload of a Netconf get-config reply, and a diff is the payload of a
 edit-config message."""
 
-# metadata
+# new metadata
 __version__ = '24.10'
 __author__ = 'Jonathan Yang <yuekyang@cisco.com>'
 __contact__ = 'yang-python@cisco.com'
