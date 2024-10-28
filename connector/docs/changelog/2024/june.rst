@@ -24,3 +24,16 @@ Upgrade Instructions
 
 Changelogs
 ^^^^^^^^^^
+
+--------------------------------------------------------------------------------
+                                Fix
+--------------------------------------------------------------------------------
+* yang.ncdiff
+    * Updated orderless configuration:
+        * Added ip ospf message-digest-key with depth 1
+    * Updated orderless configuration:
+        * Added mpls mldp static with depth 0
+    * Updated Router orderless configuration:
+        * Added router with depth 0
+    * Updated orderless configuration:
+        * Added device-tracking binding orderless configuration

@@ -102,6 +102,9 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *ip ospf message-digest-key '), 1),
     (re.compile(r'^ *mobile-network pool '), 4),
     (re.compile(r'^ *mobile-network v6pool '), 4),
+    (re.compile(r'^ *ospfv3 neighbor '), 1),
+    (re.compile(r'^ *ospfv3 \d+ ipv(\d) neighbor'), 1),
+    (re.compile(r'^ *ospfv3 \d+ neighbor '), 1),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
