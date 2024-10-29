@@ -598,7 +598,10 @@ class ConfigDelta(object):
 
     def __neg__(self):
         return ConfigDelta(config_src=self.config_dst,
-                           config_dst=self.config_src)
+                           config_dst=self.config_src,
+                           preferred_create=self.preferred_create,
+                           preferred_replace=self.preferred_replace,
+                           preferred_delete=self.preferred_delete)
 
     def __pos__(self):
         return self

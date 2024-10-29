@@ -4,6 +4,11 @@ Changelog
 .. toctree::
    :maxdepth: 2
 
+   2024/october
+   2024/September
+   2024/august
+   2024/july
+   2024/june
    2024/may
    2024/april
    2024/march

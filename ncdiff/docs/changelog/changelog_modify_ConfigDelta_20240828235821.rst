@@ -2,5 +2,6 @@
                                 Fix
 --------------------------------------------------------------------------------
 * yang.ncdiff
-    * Updated orderless configuration:
-        * Added mpls mldp static with depth 0 
+    * Modified ConfigDelta:
+        * Updated __neg__ to pass default values of preferred_create, preferred_replace and preferred_delete while creating ConfigDelta object
+
