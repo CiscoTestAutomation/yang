@@ -351,6 +351,11 @@ class Gnmi(BaseConnection):
             )
         else:
             self.channel = grpc.insecure_channel(target)
+            self.channel = grpc.insecure_channel(target = 'localhost:50051',
+                options=[
+                    ('grpc.max_send_message_length', device.settings.MAX_MESSAGE_LENGTH_WAIT),
+                ]
+                )
             self.metadata = [
                 ("username", username),
                 ("password", password),
