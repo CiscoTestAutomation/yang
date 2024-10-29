@@ -304,7 +304,7 @@ class Gnmi(BaseConnection):
             port = str(dev_args.get('port'))
         target = '{0}:{1}'.format(host, port)
 
-        options = [('grpc.max_receive_message_length', 1000000000)
+        options = [('grpc.max_receive_message_length', 1000000000),
                    ('grpc.max_send_message_length', 1000000000)]
         
         # Gather certificate settings
