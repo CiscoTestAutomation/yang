@@ -304,7 +304,9 @@ class Gnmi(BaseConnection):
             port = str(dev_args.get('port'))
         target = '{0}:{1}'.format(host, port)
 
-        options = [('grpc.max_receive_message_length', 1000000000)]
+        options = [('grpc.max_receive_message_length', 1000000000)
+                   ('grpc.max_send_message_length', 1000000000)]
+        
         # Gather certificate settings
         root = dev_args.get('root_certificate')
         if not root:
@@ -351,11 +353,7 @@ class Gnmi(BaseConnection):
             )
         else:
             self.channel = grpc.insecure_channel(target)
-            self.channel = grpc.insecure_channel(target = 'localhost:50051',
-                options=[
-                    ('grpc.max_send_message_length', device.settings.MAX_MESSAGE_LENGTH_WAIT),
-                ]
-                )
+            self.channel = grpc.insecure_channel(target, options)
             self.metadata = [
                 ("username", username),
                 ("password", password),
