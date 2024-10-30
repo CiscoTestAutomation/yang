@@ -32,6 +32,9 @@ except ImportError:
         return string
 
 
+GRPC_MAX_RECEIVE_MESSAGE_LENGTH = 1000000000
+GRPC_MAX_SEND_MESSAGE_LENGTH = 1000000000
+
 # create a logger for this module
 log = logging.getLogger(__name__)
 
@@ -304,9 +307,10 @@ class Gnmi(BaseConnection):
             port = str(dev_args.get('port'))
         target = '{0}:{1}'.format(host, port)
 
-        options = [('grpc.max_receive_message_length', 1000000000),
-                   ('grpc.max_send_message_length', 1000000000)
-                   ]
+        options = [('grpc.max_receive_message_length',
+                    getattr(self.device.settings, 'GRPC_MAX_RECEIVE_MESSAGE_LENGTH', GRPC_MAX_RECEIVE_MESSAGE_LENGTH)),
+                   ('grpc.max_send_message_length',
+                    getattr(self.device.settings, 'GRPC_MAX_SEND_MESSAGE_LENGTH', GRPC_MAX_SEND_MESSAGE_LENGTH))]
         
         # Gather certificate settings
         root = dev_args.get('root_certificate')
