@@ -307,11 +307,14 @@ class Gnmi(BaseConnection):
             port = str(dev_args.get('port'))
         target = '{0}:{1}'.format(host, port)
 
-        options = [('grpc.max_receive_message_length',
-                    getattr(self.device.settings, 'GRPC_MAX_RECEIVE_MESSAGE_LENGTH', GRPC_MAX_RECEIVE_MESSAGE_LENGTH)),
-                   ('grpc.max_send_message_length',
-                    getattr(self.device.settings, 'GRPC_MAX_SEND_MESSAGE_LENGTH', GRPC_MAX_SEND_MESSAGE_LENGTH))]
+        max_receive_message_length = getattr(getattr(self.device, 'settings', {}), 'GRPC_MAX_RECEIVE_MESSAGE_LENGTH',
+                                             GRPC_MAX_RECEIVE_MESSAGE_LENGTH)
+        max_send_message_length = getattr(getattr(self.device, 'settings', {}), 'GRPC_MAX_SEND_MESSAGE_LENGTH',
+                                          GRPC_MAX_SEND_MESSAGE_LENGTH)
         
+        options = [('grpc.max_receive_message_length', max_receive_message_length),
+                   ('grpc.max_send_message_length', max_send_message_length)]
+
         # Gather certificate settings
         root = dev_args.get('root_certificate')
         if not root:
