@@ -585,6 +585,13 @@ class ConfigDelta(object):
         ).sub
 
     @property
+    def gnmi(self):
+        return gNMICalculator(
+            self.device,
+            self.config_dst.ele, self.config_src.ele,
+        ).sub
+
+    @property
     def ns(self):
         return self.device._get_ns(self.nc)
 
