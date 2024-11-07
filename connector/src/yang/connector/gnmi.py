@@ -35,6 +35,8 @@ except ImportError:
 GRPC_MAX_RECEIVE_MESSAGE_LENGTH = 1000000000
 GRPC_MAX_SEND_MESSAGE_LENGTH = 1000000000
 
+from .settings import Settings
+
 # create a logger for this module
 log = logging.getLogger(__name__)
 
@@ -241,6 +243,9 @@ class Gnmi(BaseConnection):
         self.channel = None
         self.results = deque()
         self.metadata = None
+
+        # connection_info is set by BaseConnection class
+        self.settings = self.connection_info.pop('settings', Settings())
 
     @property
     def connected(self):

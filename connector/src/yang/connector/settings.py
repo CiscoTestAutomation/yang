@@ -9,6 +9,6 @@ class Settings(dict):
         # Enable XML formatting by default
         self.NETCONF_LOGGING_FORMAT_XML = True
         # Default receive message length
-        GRPC_MAX_RECEIVE_MESSAGE_LENGTH = 1000000000
+        self.GRPC_MAX_RECEIVE_MESSAGE_LENGTH = 1000000000
         # Default send message length
-        GRPC_MAX_SEND_MESSAGE_LENGTH = 1000000000
+        self.GRPC_MAX_SEND_MESSAGE_LENGTH = 1000000000
