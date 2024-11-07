@@ -31,10 +31,6 @@ except ImportError:
     def to_plaintext(string):
         return string
 
-
-GRPC_MAX_RECEIVE_MESSAGE_LENGTH = 1000000000
-GRPC_MAX_SEND_MESSAGE_LENGTH = 1000000000
-
 from .settings import Settings
 
 # create a logger for this module
@@ -312,8 +308,8 @@ class Gnmi(BaseConnection):
             port = str(dev_args.get('port'))
         target = '{0}:{1}'.format(host, port)
 
-        max_receive_message_length = self.setting.GRPC_MAX_RECEIVE_MESSAGE_LENGTH
-        max_send_message_length = self.setting.GRPC_MAX_SEND_MESSAGE_LENGTH
+        max_receive_message_length = self.settings.GRPC_MAX_RECEIVE_MESSAGE_LENGTH
+        max_send_message_length = self.settings.GRPC_MAX_SEND_MESSAGE_LENGTH
         
         options = [('grpc.max_receive_message_length', max_receive_message_length),
                    ('grpc.max_send_message_length', max_send_message_length)]
