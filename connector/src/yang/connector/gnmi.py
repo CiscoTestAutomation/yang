@@ -245,7 +245,7 @@ class Gnmi(BaseConnection):
         self.metadata = None
 
         # connection_info is set by BaseConnection class
-        self.settings = self.connection_info.pop('settings', Settings())
+        settings = self.connection_info.pop('settings', Settings())
 
     @property
     def connected(self):
