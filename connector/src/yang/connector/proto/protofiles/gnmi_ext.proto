@@ -29,7 +29,9 @@ message Extension {
     RegisteredExtension registered_ext = 1;    // A registered extension.
     // Well known extensions.
     MasterArbitration master_arbitration = 2;  // Master arbitration extension.
-    History history = 3;                       // History extension.
+    History history = 3;
+    Commit commit = 4;
+    Depth depth = 5;                       // History extension.
   }
 }
 
