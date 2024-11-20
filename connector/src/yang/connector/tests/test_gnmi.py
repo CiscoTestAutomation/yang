@@ -26,15 +26,12 @@ class TestGnmi(unittest.TestCase):
             '                port: 830\n' \
             '                username: admin\n' \
             '                password: admin\n' \
-            '                settings:\n' \
-            '                  GRPC_MAX_RECEIVE_MESSAGE_LENGTH: 100\n' \
-            '                  GRPC_MAX_SEND_MESSAGE_LENGTH: 100\n' \
 
         testbed = loader.load(yaml)
         device = testbed.devices['dummy']
         with patch('yang.connector.gnmi.grpc.insecure_channel') as mock_grpc:
             device.connect(alias='gnmi', via='Gnmi')
-            mock_grpc.assert_called_with('1.2.3.4:830', [('grpc.max_receive_message_length', 100), ('grpc.max_send_message_length', 100)])
+            mock_grpc.assert_called_with('1.2.3.4:830', [('grpc.max_receive_message_length', 1000000000), ('grpc.max_send_message_length', 1000000000)])
 
     def test_re_connect(self):
 
@@ -50,18 +47,15 @@ class TestGnmi(unittest.TestCase):
             '                port: 830\n' \
             '                username: admin\n' \
             '                password: admin\n' \
-            '                settings:\n' \
-            '                  GRPC_MAX_RECEIVE_MESSAGE_LENGTH: 100\n' \
-            '                  GRPC_MAX_SEND_MESSAGE_LENGTH: 100\n' \
 
         testbed = loader.load(yaml)
         device = testbed.devices['dummy']
         with patch('yang.connector.gnmi.grpc.insecure_channel') as mock_grpc:
             device.connect()
-            mock_grpc.assert_called_with('1.2.3.4:830', [('grpc.max_receive_message_length', 100), ('grpc.max_send_message_length', 100)])
+            mock_grpc.assert_called_with('1.2.3.4:830', [('grpc.max_receive_message_length', 1000000000), ('grpc.max_send_message_length', 1000000000)])
             device.disconnect()
             device.connect(alias='gnmi', via='Gnmi')
-            mock_grpc.assert_called_with('1.2.3.4:830', [('grpc.max_receive_message_length', 100), ('grpc.max_send_message_length', 100)])
+            mock_grpc.assert_called_with('1.2.3.4:830', [('grpc.max_receive_message_length', 1000000000), ('grpc.max_send_message_length', 1000000000)])
 
     def test_connect_proxy(self):
         yaml = \
@@ -89,9 +83,6 @@ class TestGnmi(unittest.TestCase):
             '                sshtunnel:\n' \
             '                  host: jumphost\n'\
             '                  tunnel_ip: 830\n' \
-            '                settings:\n' \
-            '                  GRPC_MAX_RECEIVE_MESSAGE_LENGTH: 100\n' \
-            '                  GRPC_MAX_SEND_MESSAGE_LENGTH: 100\n' \
 
         testbed = loader.load(yaml)
         device = testbed.devices['dummy']
@@ -100,7 +91,7 @@ class TestGnmi(unittest.TestCase):
                 mock_tunnel.side_effect = ['830']
                 device.connections['Gnmi'].sshtunnel = AttrDict({'tunnel_ip': '4.3.2.1'})
                 device.connect(alias='gnmi', via='Gnmi')
-                mock_grpc.assert_called_with('4.3.2.1:830', [('grpc.max_receive_message_length', 100), ('grpc.max_send_message_length', 100)])
+                mock_grpc.assert_called_with('4.3.2.1:830', [('grpc.max_receive_message_length', 1000000000), ('grpc.max_send_message_length', 1000000000)])
     request = {
         "namespace": {"oc-acl": "http://openconfig.net/yang/acl"},
         "nodes": [
