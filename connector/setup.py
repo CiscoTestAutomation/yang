@@ -182,10 +182,10 @@ setup(
         'paramiko >= 3.5.0',
         'lxml >= 4.9.4, <5.0.0',
         'ncclient >= 0.6.16',
-        'grpcio >= 1.67.1',
-        'grpcio-tools >= 1.67.1',
-        'googleapis-common-protos >= 1.65.0',
-        'protobuf >= 5.28.3'
+        'grpcio >= 1.68.0',
+        'grpcio-tools >= 1.68.0',
+        'googleapis-common-protos >= 1.66.0',
+        'protobuf >= 5.26.1'
     ],
 
     # any additional groups of dependencies.
