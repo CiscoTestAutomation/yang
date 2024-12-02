@@ -84,7 +84,7 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y yang.ncdiff || true
-	@$(PYTHON) setup.py develop -q
+	@pip3 install -e . --no-deps
 
 	@echo "Completed building and installing: $@"
 	@echo ""
@@ -97,7 +97,7 @@ undevelop:
 	@echo "Uninstalling $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@$(PYTHON) setup.py develop -q --uninstall
+	@pip3 uninstall -e . --no-deps
 
 	@echo "Completed uninstalling: $@"
 	@echo ""
