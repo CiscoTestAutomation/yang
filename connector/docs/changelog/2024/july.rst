@@ -1,7 +1,7 @@
-May 2024
+July 2024
 ==========
 
-May 28 - Yang v24.5 
+July 30 - Yang v24.7 
 ------------------------
 
 
@@ -9,7 +9,7 @@ May 28 - Yang v24.5
 +-------------------------------+-------------------------------+
 | Module                        | Versions                      |
 +===============================+===============================+
-| ``yang.connector ``           | 24.5                          |
+| ``yang.connector ``           | 24.7                          |
 +-------------------------------+-------------------------------+
 
 Upgrade Instructions
@@ -24,10 +24,9 @@ Upgrade Instructions
 
 Changelogs
 ^^^^^^^^^^
-
 --------------------------------------------------------------------------------
                                 Fix
 --------------------------------------------------------------------------------
 * yang.ncdiff
     * Updated orderless configuration:
-        * Added redistribute under address-family in router eigrp
+        * Added distribute-list 1300 out with depth 2

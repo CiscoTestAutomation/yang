@@ -152,3 +152,14 @@ distribute_staging_external:
 	@echo ""
 	@echo "Done."
 	@echo ""
+
+changelogs:
+	@echo ""
+	@echo "--------------------------------------------------------------------"
+	@echo "Generating changelog file"
+	@echo ""
+	@$(PYTHON) -c "from ciscodistutils.make_changelog import main; main('./docs/changelog/undistributed', './docs/changelog/undistributed.rst')"
+	@echo "yang.ncdiff changelog created..."
+	@echo ""
+	@echo "Done."
+	@echo ""
