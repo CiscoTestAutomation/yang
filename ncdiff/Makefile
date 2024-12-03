@@ -81,6 +81,7 @@ package:
 	@echo ""
 
 develop:
+	@pip3 install $(DEPENDENCIES)
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
