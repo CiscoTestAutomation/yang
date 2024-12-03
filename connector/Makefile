@@ -85,7 +85,7 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y yang.connector || true
-	@$(PYTHON) setup.py develop -q
+	@pip install -e . --no-deps
 
 	@echo "Completed building and installing: $@"
 	@echo ""
@@ -98,7 +98,7 @@ undevelop:
 	@echo "Uninstalling $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@$(PYTHON) setup.py develop -q --uninstall
+	@pip uninstall $(PKG_NAME) -y
 
 	@echo "Completed uninstalling: $@"
 	@echo ""
