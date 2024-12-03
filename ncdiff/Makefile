@@ -34,7 +34,7 @@ DISTDIR       = $(BUILDDIR)/dist
 
 
 DEPENDENCIES  = pyang >=1.7.3 ncclient >=0.6.3 requests >=2.18.4 grpcio >=1.7.3 yang.connector >=3.0.0
-DEPENDENCIES += grpcio-tools >=1.7.3 xmljson >=0.1.9 pyats.topology >=5.0.0 pyats.connections >=5.0.0
+DEPENDENCIES += grpcio-tools >=1.7.3 xmljson >=0.1.9 pyats.topology >=5.0.0 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
         develop undevelop populate_dist_dir help docs distribute_docs test
 
