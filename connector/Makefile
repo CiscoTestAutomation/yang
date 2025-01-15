@@ -32,7 +32,7 @@ PYTHON        = python3
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
 
-DEPENDENCIES = "paramiko >= 1.15.1" "lxml >= 3.3.0, <5.0.0" \
+DEPENDENCIES = "paramiko >= 1.15.1" "lxml >= 3.3.0" \
 				"ncclient >= 0.6.6" grpcio protobuf
 
 
