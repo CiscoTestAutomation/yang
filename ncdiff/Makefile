@@ -32,6 +32,10 @@ PYTHON        = python3
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
 
+DEPENDENCIES = "pyang >= 1.7.3" "ncclient >= 0.6.3" \
+				"requests >= 2.18.4" "xmljson >= 0.1.9" \
+				"yang.connector >= 3.0.0"
+
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
         develop undevelop populate_dist_dir help docs distribute_docs test
 
@@ -84,7 +88,8 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y yang.ncdiff || true
-	@pip3 install -e .
+	@pip install $(DEPENDENCIES)
+	@pip install -e . --no-deps
 
 	@echo "Completed building and installing: $@"
 	@echo ""
@@ -97,7 +102,7 @@ undevelop:
 	@echo "Uninstalling $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@$(PYTHON) setup.py develop -q --uninstall
+	@pip uninstall $(PKG_NAME) -y
 
 	@echo "Completed uninstalling: $@"
 	@echo ""
