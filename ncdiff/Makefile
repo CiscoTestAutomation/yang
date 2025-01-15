@@ -84,7 +84,7 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y yang.ncdiff || true
-	@$(PYTHON) setup.py develop -q
+	@pip3 install -e .
 
 	@echo "Completed building and installing: $@"
 	@echo ""

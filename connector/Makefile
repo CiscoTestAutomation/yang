@@ -85,7 +85,7 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y yang.connector || true
-	@$(PYTHON) setup.py develop -q
+	@pip3 install -e .
 
 	@echo "Completed building and installing: $@"
 	@echo ""
