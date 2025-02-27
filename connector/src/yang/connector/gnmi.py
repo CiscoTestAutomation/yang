@@ -228,6 +228,7 @@ class Gnmi(BaseConnection):
         super().__init__(*args, **kwargs)
         self.device = kwargs.get('device')
         self.dev_args = self.connection_info
+        self.skip_verify = kwargs.get('skip_verify')
         if self.dev_args.get('protocol', '') != 'gnmi':
             msg = 'Invalid protocol {0}'.format(self.dev_args.get('protocol', ''))
             raise TypeError(msg)
@@ -266,6 +267,7 @@ class Gnmi(BaseConnection):
         dev_args = self.dev_args
         username = dev_args.get('username', '')
         password = dev_args.get('password', '')
+        skip_verify = dev_args.get('skip_verify')
 
         if dev_args.get('custom_log', ''):
             self.log = dev_args.get('custom_log')
@@ -368,18 +370,17 @@ class Gnmi(BaseConnection):
             self.log.info("Connecting insecure channel")
 
         self.service = proto.gnmi_pb2_grpc.gNMIStub(self.channel)
-
-
-        resp = self.capabilities()
-        if resp:
-            log.info('\ngNMI version: {0} supported encodings: {1}\n\n'.format(
-                resp.gNMI_version,
-                [proto.gnmi_pb2.Encoding.Name(i) for i in resp.supported_encodings]))
-            log.info(banner('gNMI CONNECTED'))
-        else:
-            log.info(banner('gNMI Capabilities not returned'))
-            self.disconnect()
-            raise gNMIException('Connection not successful')
+        if not skip_verify:
+            resp = self.capabilities()
+            if resp:
+                log.info('\ngNMI version: {0} supported encodings: {1}\n\n'.format(
+                    resp.gNMI_version,
+                    [proto.gnmi_pb2.Encoding.Name(i) for i in resp.supported_encodings]))
+                log.info(banner('gNMI CONNECTED'))
+            else:
+                log.info(banner('gNMI Capabilities not returned'))
+                self.disconnect()
+                raise gNMIException('Connection not successful')
 
     def set(self, request):
         """Gnmi SET method.
