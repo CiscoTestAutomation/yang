@@ -8,6 +8,8 @@ from yang.connector import xpath_util
 from pyats.topology import loader
 from pyats.datastructures import AttrDict
 
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
 class TestGnmi(unittest.TestCase):
 
@@ -132,6 +134,105 @@ class TestGnmi(unittest.TestCase):
             },
         ],
     }
+
+    @patch('yang.connector.gnmi.grpc.secure_channel')
+    @patch('yang.connector.gnmi.grpc.composite_channel_credentials')
+    @patch('yang.connector.gnmi.grpc.metadata_call_credentials')
+    @patch('yang.connector.gnmi.grpc.ssl_channel_credentials')
+    @patch('yang.connector.gnmi.x509.load_pem_x509_certificate')
+    @patch('yang.connector.gnmi.ssl.get_server_certificate')
+    def test_connect_with_skip_verify(
+        self, mock_get_server_certificate, mock_load_pem_x509_certificate,
+        mock_ssl_channel_credentials, mock_metadata_call_credentials,
+        mock_composite_channel_credentials, mock_secure_channel, *_
+    ):
+        yaml = """
+devices:
+    dummy:
+        type: dummy_device
+        connections:
+            Gnmi:
+                class:  yang.connector.Gnmi
+                protocol: gnmi
+                ip : 1.2.3.4
+                port: 830
+                username: admin
+                password: admin
+                skip_verify: true
+"""
+        testbed = loader.load(yaml)
+        device = testbed.devices['dummy']
+        device.connect(alias='gnmi', via='Gnmi')
+        mock_get_server_certificate.assert_called_once_with(('1.2.3.4', '830'))
+        mock_load_pem_x509_certificate.assert_called_once_with(
+            mock_get_server_certificate.return_value.encode('utf-8'),
+            default_backend()
+        )
+        mock_load_pem_x509_certificate.return_value.subject.get_attributes_for_oid.assert_called_once_with(
+            (x509.NameOID.COMMON_NAME)
+        )
+        mock_ssl_channel_credentials.assert_called_once_with(
+            mock_get_server_certificate.return_value.encode('utf-8'), None, None
+        )
+        self.assertEqual(
+            mock_secure_channel.call_args[0][2][-1],
+            (
+                'grpc.ssl_target_name_override',
+                mock_load_pem_x509_certificate.return_value.subject.get_attributes_for_oid.return_value[0].value
+            )
+        )
+
+    @patch('yang.connector.gnmi.ssl.get_server_certificate', side_effect=Exception)
+    def test_connect_with_skip_verify_get_server_certificate_exception(self, *_):
+        yaml = """
+devices:
+    dummy:
+        type: dummy_device
+        connections:
+            Gnmi:
+                class:  yang.connector.Gnmi
+                protocol: gnmi
+                ip: 1.2.3.4
+                port: 830
+                username: admin
+                password: admin
+                skip_verify: true
+"""
+        testbed = loader.load(yaml)
+        device = testbed.devices['dummy']
+        with self.assertRaises(Exception):
+            device.connect(alias='gnmi', via='Gnmi')
+
+    @patch('yang.connector.gnmi.ssl.get_server_certificate')
+    @patch('yang.connector.gnmi.grpc.insecure_channel')
+    @patch('yang.connector.gnmi.x509.load_pem_x509_certificate')
+    def test_connect_with_skip_verify_get_attributes_for_oid_exception(
+        self, mock_load_pem_x509_certificate, mock_insecure_channel, *_
+    ):
+        yaml = """
+devices:
+    dummy:
+        type: dummy_device
+        connections:
+            Gnmi:
+                class:  yang.connector.Gnmi
+                protocol: gnmi
+                ip: 1.2.3.4
+                port: 830
+                username: admin
+                password: admin
+                skip_verify: true
+"""
+        mock_load_pem_x509_certificate.return_value.subject.get_attributes_for_oid.side_effect = BaseException
+        testbed = loader.load(yaml)
+        device = testbed.devices['dummy']
+        device.connect(alias='gnmi', via='Gnmi')
+        mock_insecure_channel.assert_called_once_with(
+            '1.2.3.4:830', [
+                ('grpc.max_receive_message_length', 1000000000),
+                ('grpc.max_send_message_length', 1000000000)
+            ]
+        )
 
     def test_xpath_to_path_elem(self):
         """Test converting Genie content data to cisco_gnmi format."""
