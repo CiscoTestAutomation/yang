@@ -88,8 +88,12 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y yang.ncdiff || true
+<<<<<<< HEAD
 	@pip install $(DEPENDENCIES)
 	@pip install -e . --no-deps
+=======
+	@pip3 install -e .
+>>>>>>> f4865ef (Made changes to support 3.13)
 
 	@echo "Completed building and installing: $@"
 	@echo ""
