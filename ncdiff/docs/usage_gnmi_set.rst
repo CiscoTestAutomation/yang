@@ -27,8 +27,6 @@ YAML topology file:
                 enable: admin
                 line: admin
             connections:
-                defaults:
-                    class: unicon.Unicon
                 a:
                     protocol: telnet
                     ip: "1.2.3.4"
@@ -37,8 +35,7 @@ YAML topology file:
                     protocol : telnet
                     ip : "2.3.4.5"
                 gnmi:
-                    class: yang.connector.Gnmi
-                    protocol: gnmi
+                    class: yang.connector.gNMI
                     ip : "2.3.4.5"
                     port: 50052
                     timeout: 10

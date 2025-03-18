@@ -31,7 +31,6 @@ except ImportError:
     def to_plaintext(string):
         return string
 
-from .settings import Settings
 
 # create a logger for this module
 log = logging.getLogger(__name__)
@@ -240,9 +239,6 @@ class Gnmi(BaseConnection):
         self.results = deque()
         self.metadata = None
 
-        # connection_info is set by BaseConnection class
-        self.settings = self.connection_info.pop('settings', Settings())
-
     @property
     def connected(self):
         """Return True if session is connected."""
@@ -308,12 +304,7 @@ class Gnmi(BaseConnection):
             port = str(dev_args.get('port'))
         target = '{0}:{1}'.format(host, port)
 
-        max_receive_message_length = self.settings.get('GRPC_MAX_RECEIVE_MESSAGE_LENGTH')
-        max_send_message_length = self.settings.get('GRPC_MAX_SEND_MESSAGE_LENGTH')
-        
-        options = [('grpc.max_receive_message_length', max_receive_message_length),
-                   ('grpc.max_send_message_length', max_send_message_length)]
-
+        options = [('grpc.max_receive_message_length', 1000000000)]
         # Gather certificate settings
         root = dev_args.get('root_certificate')
         if not root:
@@ -360,7 +351,6 @@ class Gnmi(BaseConnection):
             )
         else:
             self.channel = grpc.insecure_channel(target)
-            self.channel = grpc.insecure_channel(target, options)
             self.metadata = [
                 ("username", username),
                 ("password", password),
