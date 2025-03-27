@@ -576,6 +576,20 @@ class ConfigDelta(object):
             replace_depth=self.replace_depth,
             replace_xpath=self.replace_xpath,
         ).sub
+    
+    @property
+    def rc(self):
+        return RestconfCalculator(
+            self.device,
+            self.config_dst.ele, self.config_src.ele,
+        ).sub
+
+    @property
+    def gnmi(self):
+        return gNMICalculator(
+            self.device,
+            self.config_dst.ele, self.config_src.ele,
+        ).sub
 
     @property
     def ns(self):
