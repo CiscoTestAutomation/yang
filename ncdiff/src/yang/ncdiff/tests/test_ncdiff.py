@@ -4643,7 +4643,7 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(name, ['Mgmt-intf'])
 
     def test_default_in_use_1(self):
-      prefixes = {n[1]: n[2] for n in self.d.namespaces}
+      prefixes = {n[1]: n[2] for n in self.d.namespaces if n[1] is not None}
       nodes = self.d.models["jon"].tree.xpath(
           "/jon/jon:address",
           namespaces=prefixes,
@@ -4662,7 +4662,7 @@ class TestNcDiff(unittest.TestCase):
           "/jon:location/city/alberta",
           "/jon:location/city/alberta/other-info/geo-facts/code",
       ]
-      prefixes = {n[1]: n[2] for n in self.d.namespaces}
+      prefixes = {n[1]: n[2] for n in self.d.namespaces if n[1] is not None}
       nodes = self.d.models["jon"].tree.xpath(
           "/jon/jon:location",
           namespaces=prefixes,
@@ -4689,7 +4689,7 @@ class TestNcDiff(unittest.TestCase):
           "/oc-if:interfaces/interface/oc-vlan:routed-vlan/oc-ip:ipv4"
           "/state/enabled",
       ]
-      prefixes = {n[1]: n[2] for n in self.d.namespaces}
+      prefixes = {n[1]: n[2] for n in self.d.namespaces if n[1] is not None}
       nodes = self.d.models["openconfig-interfaces"].tree.xpath(
           "//oc-if:interfaces/oc-if:interface/oc-vlan:routed-vlan/oc-ip:ipv4",
           namespaces=prefixes,
