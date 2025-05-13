@@ -179,13 +179,13 @@ setup(
 
     # package dependencies
     install_requires =  [
-        'paramiko >= 3.5.0',
-        'lxml >= 4.9.4, <5.0.0',
-        'ncclient >= 0.6.16',
-        'grpcio >= 1.68.0',
-        'grpcio-tools >= 1.68.0',
-        'googleapis-common-protos >= 1.66.0',
-        'protobuf >= 5.26.1'
+        'paramiko >= 3.5.1',
+        'lxml >= 4.9.4, <5.4.0',
+        'ncclient >= 0.6.19',
+        'grpcio >= 1.71.0',
+        'grpcio-tools >= 1.71.0',
+        'googleapis-common-protos >= 1.70.0',
+        'protobuf >= 6.30.2'
     ],
 
     # any additional groups of dependencies.
