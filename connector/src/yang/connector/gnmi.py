@@ -6,6 +6,9 @@ from collections import deque
 from google.protobuf import json_format
 import grpc
 from . import proto
+import ssl
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
 
 try:
@@ -228,6 +231,7 @@ class Gnmi(BaseConnection):
         super().__init__(*args, **kwargs)
         self.device = kwargs.get('device')
         self.dev_args = self.connection_info
+        self.skip_verify = kwargs.get('skip_verify')
         if self.dev_args.get('protocol', '') != 'gnmi':
             msg = 'Invalid protocol {0}'.format(self.dev_args.get('protocol', ''))
             raise TypeError(msg)
@@ -266,6 +270,7 @@ class Gnmi(BaseConnection):
         dev_args = self.dev_args
         username = dev_args.get('username', '')
         password = dev_args.get('password', '')
+        skip_verify = dev_args.get('skip_verify')
 
         if dev_args.get('custom_log', ''):
             self.log = dev_args.get('custom_log')
@@ -331,6 +336,28 @@ class Gnmi(BaseConnection):
         if private_key and os.path.isfile(private_key):
             private_key = open(private_key, 'rb').read()
 
+        if skip_verify and not root:
+            try:
+                ssl_cert = ssl.get_server_certificate((str(host), port)).encode("utf-8")
+            except Exception as e:
+                self.log.error(f'The SSH certificate cannot be retrieved from {target}')
+                raise gNMIException(f'The SSH certificate cannot be retrieved from {target}', e)
+
+            ssl_cert_deserialized = x509.load_pem_x509_certificate(
+                ssl_cert, default_backend()
+            )
+
+            try:
+                ssl_cert_common_name = ssl_cert_deserialized.subject.get_attributes_for_oid(
+                        (x509.oid.NameOID.COMMON_NAME)
+                    )[0].value
+                options.append(
+                    ('grpc.ssl_target_name_override', ssl_cert_common_name),
+                )
+                root = ssl_cert
+            except BaseException as err:
+                self.log.warning(f'Unable to get common name: {err}')
+
         if any((root, chain, private_key)):
             override_name = dev_args.get('ssl_name_override', '')
             if override_name:
@@ -359,7 +386,6 @@ class Gnmi(BaseConnection):
                 target, channel_creds, options
             )
         else:
-            self.channel = grpc.insecure_channel(target)
             self.channel = grpc.insecure_channel(target, options)
             self.metadata = [
                 ("username", username),
