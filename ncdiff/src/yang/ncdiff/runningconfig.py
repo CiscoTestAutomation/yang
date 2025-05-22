@@ -105,6 +105,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *ospfv3 neighbor '), 1),
     (re.compile(r'^ *ospfv3 \d+ ipv(\d) neighbor'), 1),
     (re.compile(r'^ *ospfv3 \d+ neighbor '), 1),
+    (re.compile(r'^ *member vni '), 1),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
@@ -178,6 +179,7 @@ REPLACING_COMMANDS = [
     ('exit-router-lisp', 'exit'),
     ('exit-address-family', ' exit-address-family'),
 ]
+
 
 class ListDiff(object):
     '''ListDiff
