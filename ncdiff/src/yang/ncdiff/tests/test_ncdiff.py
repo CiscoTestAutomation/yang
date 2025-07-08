@@ -382,6 +382,8 @@ class TestNcDiff(unittest.TestCase):
         self.parser = etree.XMLParser(remove_blank_text=True)
 
     def test_delta_1(self):
+        """Test the delta when preferred_delete is set to remove.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
                        message-id="101">
@@ -484,7 +486,7 @@ class TestNcDiff(unittest.TestCase):
   <interfaces xmlns="http://openconfig.net/yang/interfaces">
     <interface>
       <name>GigabitEthernet1/0/1</name>
-      <ethernet xmlns="http://openconfig.net/yang/interfaces/ethernet" nc:operation="delete"/>
+      <ethernet xmlns="http://openconfig.net/yang/interfaces/ethernet" nc:operation="remove"/>
     </interface>
   </interfaces>
 </nc:config>
@@ -494,9 +496,12 @@ class TestNcDiff(unittest.TestCase):
         delta1 = config2 - config1
         delta2 = config1 - config2
         self.assertEqual(str(delta1).strip(), expected_delta1.strip())
+        delta2.preferred_delete = "remove"
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_2(self):
+        """Test the delta when config in a list instance is changed.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
                        message-id="101">
@@ -597,6 +602,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_3(self):
+        """Test the delta when a leaf-list has ordered-by set to user.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -681,6 +688,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(config1, config4)
 
     def test_delta_4(self):
+        """Test the delta when a list has ordered-by set to user.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -807,6 +816,9 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(config1, config4)
 
     def test_delta_5(self):
+        """Test the delta when a list has ordered-by set to user. Note that
+        preferred_create, preferred_replace and preferred_delete are set.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -928,6 +940,9 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(config1, config4)
 
     def test_delta_6(self):
+        """Test the delta when a leaf-list has ordered-by set to user. Note
+        that preferred_create, preferred_replace and preferred_delete are set.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1017,6 +1032,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(config1, config4)
 
     def test_delta_7(self):
+        """Test the delta when choices are involved.
+        """
         # choice
         no_choice_xml = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
@@ -1167,6 +1184,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta6).strip(), expected_delta1.strip())
 
     def test_delta_8(self):
+        """Test the delta when multiple choices are involved.
+        """
         # multiple choices
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
@@ -1276,6 +1295,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_9(self):
+        """Test the delta when a list is under a choice.
+        """
         # choice with list
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
@@ -1325,6 +1346,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_10(self):
+        """Test the delta when multiple nodes are under a case.
+        """
         # choice multiple nodes in one case
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
@@ -1368,6 +1391,10 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_11(self):
+        """Test the behavior of preferred_create="create" when creating
+        something in a container. The expected behavior involves whether there
+        is a default statement.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1437,6 +1464,10 @@ class TestNcDiff(unittest.TestCase):
                 )
 
     def test_delta_12(self):
+        """Test the behavior of preferred_create="create" when creating
+        something in a choice. The expected behavior involves whether there
+        is a default statement.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1497,7 +1528,189 @@ class TestNcDiff(unittest.TestCase):
                     f"but got the delta {delta.nc} instead.",
                 )
 
+    def test_delta_13(self):
+        """Test the behavior of preferred_create="create" when creating
+        something in a non-presence container. The expected behavior is to
+        create individual leaves within the container instead of the
+        non-presence container.
+        """
+        xml1 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+              </data>
+            </rpc-reply>
+            """
+        xml2 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <tracking xmlns="urn:jon">
+                  <logging>
+                    <local>true</local>
+                  </logging>
+                </tracking>
+              </data>
+            </rpc-reply>
+            """
+        config1 = Config(self.d, xml1)
+        config2 = Config(self.d, xml2)
+        delta1 = config2 - config1
+        delta1.preferred_create = "create"
+        verification = [
+            # Create operation at tracking or logging, which are non-presence
+            # containers, is not allowed as per confd implementation although
+            # the expected behavior is ambiguous in RFC7950. More discussion
+            # can be found in the Tail-F ticket PS-47089.
+            (delta1, "/nc:config/jon:tracking/jon:logging/jon:local"),
+        ]
+        for delta, xpath in verification:
+            nodes = delta.nc.xpath(
+                xpath,
+                namespaces=delta.ns)
+            self.assertEqual(
+                len(nodes),
+                1,
+                f"Expected to find xpath '{xpath}' in delta "
+                f"but the delta is {delta.nc}",
+            )
+            for node in nodes:
+                self.assertEqual(
+                    node.get(operation_tag),
+                    "create",
+                    f"Expected 'create' operation at {xpath} "
+                    f"but got the delta {delta.nc} instead.",
+                )
+
+    def test_delta_14(self):
+        """Test the behavior of preferred_create="create" when creating
+        something in a non-presence container. The expected behavior involves
+        whether there is default in use.
+        """
+        xml1 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <location xmlns="urn:jon">
+                  <alberta>
+                    <name>Calgary</name>
+                  </alberta>
+                </location>
+              </data>
+            </rpc-reply>
+            """
+        xml2 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <location xmlns="urn:jon">
+                  <alberta>
+                    <name>Calgary</name>
+                  </alberta>
+                  <other-info>
+                    <geo-facts>
+                      <code>ON</code>
+                    </geo-facts>
+                  </other-info>
+                </location>
+              </data>
+            </rpc-reply>
+            """
+        config1 = Config(self.d, xml1)
+        config2 = Config(self.d, xml2)
+        delta = config2 - config1
+        delta.preferred_create = "create"
+        verification = [
+            # Create operation at "other-info" is not allowed as it is a NP
+            # container.
+            "/nc:config/jon:location/jon:other-info",
+
+            # Create operation at "geo-facts" is not allowed as it is a NP
+            # container.
+            "/nc:config/jon:location/jon:other-info/jon:geo-facts",
+
+            # Create operation at "code" is not allowed as it has default in
+            # use.
+            "/nc:config/jon:location/jon:other-info/jon:geo-facts/jon:code",
+        ]
+        for xpath in verification:
+            nodes = delta.nc.xpath(
+                xpath,
+                namespaces=delta.ns)
+            self.assertEqual(
+                len(nodes),
+                1,
+                f"Expected to find xpath '{xpath}' in delta "
+                f"but the delta is {delta}",
+            )
+            for node in nodes:
+                self.assertIsNone(
+                    node.get(operation_tag),
+                    f"Expected there is no 'create' operation at {xpath} "
+                    f"but got the delta {delta} instead.",
+                )
+
+    def test_delta_15(self):
+        """Test the behavior of preferred_delete="delete" when deleting
+        something in a non-presence container. The expected behavior is to
+        delete individual leaves within the container instead of the
+        non-presence container.
+        """
+        xml1 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <location xmlns="urn:jon">
+                  <alberta>
+                    <name>Calgary</name>
+                  </alberta>
+                </location>
+              </data>
+            </rpc-reply>
+            """
+        xml2 = """
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
+              <data>
+                <location xmlns="urn:jon">
+                  <alberta>
+                    <name>Calgary</name>
+                  </alberta>
+                  <other-info>
+                    <geo-facts>
+                      <code>ON</code>
+                    </geo-facts>
+                  </other-info>
+                </location>
+              </data>
+            </rpc-reply>
+            """
+        config1 = Config(self.d, xml1)
+        config2 = Config(self.d, xml2)
+        delta = config1 - config2
+        verification = [
+            # Delete operation at "other-info" is not ideal as it is a NP
+            # container.
+            "/nc:config/jon:location/jon:other-info",
+
+            # Delete operation at "geo-facts" is not ideal as it is a NP
+            # container.
+            "/nc:config/jon:location/jon:other-info/jon:geo-facts",
+        ]
+        for xpath in verification:
+            nodes = delta.nc.xpath(
+                xpath,
+                namespaces=delta.ns)
+            self.assertEqual(
+                len(nodes),
+                1,
+                f"Expected to find xpath '{xpath}' in delta "
+                f"but the delta is {delta}",
+            )
+            for node in nodes:
+                self.assertIsNone(
+                    node.get(operation_tag),
+                    f"Expected there is no 'delete' operation at {xpath} "
+                    f"but got the delta {delta} instead.",
+                )
+
     def test_delta_replace_1(self):
+        """Test the delta when the diff type is 'replace'.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1695,9 +1908,9 @@ class TestNcDiff(unittest.TestCase):
       <bgp xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-bgp">
         <id>10</id>
         <bgp>
-          <listen nc:operation="delete"/>
+          <listen nc:operation="remove"/>
         </bgp>
-        <address-family nc:operation="delete"/>
+        <address-family nc:operation="remove"/>
       </bgp>
     </router>
   </native>
@@ -1708,6 +1921,7 @@ class TestNcDiff(unittest.TestCase):
         delta1 = config2 - config1
         delta2 = -delta1
         self.assertEqual(str(delta1).strip(), expected_delta1.strip())
+        delta2.preferred_delete = "remove"
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_3(self):
@@ -2247,7 +2461,7 @@ class TestNcDiff(unittest.TestCase):
     <interface>
       <Tunnel>
         <name>5</name>
-        <tunnel xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-tunnel" nc:operation="delete"/>
+        <tunnel xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-tunnel" nc:operation="remove"/>
       </Tunnel>
     </interface>
   </native>
@@ -2281,6 +2495,7 @@ class TestNcDiff(unittest.TestCase):
         delta6 = config2 - config3
         self.assertEqual(str(delta1).strip(), expected_delta1.strip())
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
+        delta3.preferred_delete = "remove"
         self.assertEqual(str(delta3).strip(), expected_delta3.strip())
         self.assertEqual(str(delta4).strip(), expected_delta2.strip())
         self.assertEqual(str(delta5).strip(), expected_delta4.strip())
