@@ -382,6 +382,8 @@ class TestNcDiff(unittest.TestCase):
         self.parser = etree.XMLParser(remove_blank_text=True)
 
     def test_delta_1(self):
+        """Test the delta when preferred_delete is set to remove.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
                        message-id="101">
@@ -498,6 +500,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_2(self):
+        """Test the delta when config in a list instance is changed.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
                        message-id="101">
@@ -598,6 +602,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_3(self):
+        """Test the delta when a leaf-list has ordered-by set to user.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -682,6 +688,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(config1, config4)
 
     def test_delta_4(self):
+        """Test the delta when a list has ordered-by set to user.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -808,6 +816,9 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(config1, config4)
 
     def test_delta_5(self):
+        """Test the delta when a list has ordered-by set to user. Note that
+        preferred_create, preferred_replace and preferred_delete are set.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -929,6 +940,9 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(config1, config4)
 
     def test_delta_6(self):
+        """Test the delta when a leaf-list has ordered-by set to user. Note
+        that preferred_create, preferred_replace and preferred_delete are set.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1018,6 +1032,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(config1, config4)
 
     def test_delta_7(self):
+        """Test the delta when choices are involved.
+        """
         # choice
         no_choice_xml = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
@@ -1168,6 +1184,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta6).strip(), expected_delta1.strip())
 
     def test_delta_8(self):
+        """Test the delta when multiple choices are involved.
+        """
         # multiple choices
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
@@ -1277,6 +1295,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_9(self):
+        """Test the delta when a list is under a choice.
+        """
         # choice with list
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
@@ -1326,6 +1346,8 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_10(self):
+        """Test the delta when multiple nodes are under a case.
+        """
         # choice multiple nodes in one case
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
@@ -1369,6 +1391,10 @@ class TestNcDiff(unittest.TestCase):
         self.assertEqual(str(delta2).strip(), expected_delta2.strip())
 
     def test_delta_11(self):
+        """Test the behavior of preferred_create="create" when creating
+        something in a container. The expected behavior involves whether there
+        is a default statement.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1438,6 +1464,10 @@ class TestNcDiff(unittest.TestCase):
                 )
 
     def test_delta_12(self):
+        """Test the behavior of preferred_create="create" when creating
+        something in a choice. The expected behavior involves whether there
+        is a default statement.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1499,6 +1529,11 @@ class TestNcDiff(unittest.TestCase):
                 )
 
     def test_delta_13(self):
+        """Test the behavior of preferred_create="create" when creating
+        something in a non-presence container. The expected behavior is to
+        create individual leaves within the container instead of the
+        non-presence container.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1546,6 +1581,10 @@ class TestNcDiff(unittest.TestCase):
                 )
 
     def test_delta_14(self):
+        """Test the behavior of preferred_create="create" when creating
+        something in a non-presence container. The expected behavior involves
+        whether there is default in use.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
@@ -1608,6 +1647,11 @@ class TestNcDiff(unittest.TestCase):
                 )
 
     def test_delta_15(self):
+        """Test the behavior of preferred_delete="delete" when deleting
+        something in a non-presence container. The expected behavior is to
+        delete individual leaves within the container instead of the
+        non-presence container.
+        """
         xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
