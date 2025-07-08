@@ -1709,6 +1709,8 @@ class TestNcDiff(unittest.TestCase):
                 )
 
     def test_delta_replace_1(self):
+        """Test the delta when the diff type is 'replace'.
+        """
         config_xml1 = """
             <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101">
               <data>
