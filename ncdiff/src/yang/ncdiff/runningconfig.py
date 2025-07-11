@@ -108,6 +108,14 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *member vni '), 1),
     (re.compile(r'^ *ipv6 route '), 0),
     (re.compile(r'^ *ip route '), 0),
+    (re.compile(r'^ *enable password '), 0),
+    (re.compile(r'^ *ip radius '), 0),
+    (re.compile(r'^ *ip nat inside '), 0),
+    (re.compile(r'^ *description '), 1),
+    (re.compile(r'^ *match ip address '), 1),
+    (re.compile(r'^ *match interface '), 1),
+    (re.compile(r'^ *control-plane '), 0),
+    (re.compile(r'^ *yang-interfaces '), 0),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
