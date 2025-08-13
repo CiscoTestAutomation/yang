@@ -66,7 +66,6 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *aaa group server '), 0),
     (re.compile(r'^ *flow exporter '), 0),
     (re.compile(r'^ *exporter '), 1),
-    (re.compile(r'^ *username '), 0),
     (re.compile(r'^ *flow record '), 0),
     (re.compile(r'^ *match ipv4 '), 1),
     (re.compile(r'^ *match ipv6 '), 1),
@@ -464,15 +463,6 @@ class RunningConfigDiff(object):
                 list_ret.append((last_line, None, ''))
         return list_ret
     
-    def has_changes(self, sublist):
-        if sublist is None:
-            return False
-        for child_k, child_v, child_i in sublist:
-            if child_i in ('+', '-'):
-                return True
-            if child_i == '' and child_v and self.has_changes(child_v):
-                return True
-        return False
 
     def list2config(self, list_in, diff_type=None):
         str_ret = ''
@@ -481,11 +471,10 @@ class RunningConfigDiff(object):
         for k, v, i in list_in:
             if k == '':
                 continue
-            if diff_type == '' and i == '':
-                if not self.has_changes(v):
-                    continue
-            local_diff_type = i if diff_type == '' else diff_type
-           
+            if diff_type == '':
+                local_diff_type = i
+            else:
+                local_diff_type = diff_type
             if diff_type is None:
                 str_ret += '  ' + k + '\n'
             else:
@@ -496,6 +485,7 @@ class RunningConfigDiff(object):
                     self.list2config(v, diff_type=local_diff_type),
                 )
         return str_ret
+       
 
     def list2cli(self, list_in):
         if list_in is None:
