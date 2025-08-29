@@ -108,6 +108,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *member vni '), 1),
     (re.compile(r'^ *ipv6 route '), 0),
     (re.compile(r'^ *ip route '), 0),
+    (re.compile(r'^ *ip wccp '), 1),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
