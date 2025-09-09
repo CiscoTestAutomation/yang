@@ -66,6 +66,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *aaa group server '), 0),
     (re.compile(r'^ *flow exporter '), 0),
     (re.compile(r'^ *exporter '), 1),
+    (re.compile(r'^ *username '), 0),
     (re.compile(r'^ *flow record '), 0),
     (re.compile(r'^ *match ipv4 '), 1),
     (re.compile(r'^ *match ipv6 '), 1),
