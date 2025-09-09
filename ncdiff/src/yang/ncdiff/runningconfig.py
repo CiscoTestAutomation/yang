@@ -66,7 +66,6 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *aaa group server '), 0),
     (re.compile(r'^ *flow exporter '), 0),
     (re.compile(r'^ *exporter '), 1),
-    (re.compile(r'^ *username '), 0),
     (re.compile(r'^ *flow record '), 0),
     (re.compile(r'^ *match ipv4 '), 1),
     (re.compile(r'^ *match ipv6 '), 1),
@@ -109,6 +108,7 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *ipv6 route '), 0),
     (re.compile(r'^ *ip route '), 0),
     (re.compile(r'^ *ip wccp '), 1),
+    (re.compile(r'^ *match identity remote '), 1),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
