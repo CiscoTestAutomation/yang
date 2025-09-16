@@ -110,6 +110,8 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *ip route '), 0),
     (re.compile(r'^ *aaa attribute list '), 0),
     (re.compile(r'^ *attribute type '), 1),
+    (re.compile(r'^ *access-session attributes filter-list list '), 0),
+    (re.compile(r'^ *(vlan-id|cdp|lldp|dhcpv6?|http)$'), 1),
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
