@@ -66,7 +66,6 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *aaa group server '), 0),
     (re.compile(r'^ *flow exporter '), 0),
     (re.compile(r'^ *exporter '), 1),
-    (re.compile(r'^ *username '), 0),
     (re.compile(r'^ *flow record '), 0),
     (re.compile(r'^ *match ipv4 '), 1),
     (re.compile(r'^ *match ipv6 '), 1),
@@ -466,6 +465,7 @@ class RunningConfigDiff(object):
             else:
                 list_ret.append((last_line, None, ''))
         return list_ret
+    
 
     def list2config(self, list_in, diff_type=None):
         str_ret = ''
@@ -488,6 +488,7 @@ class RunningConfigDiff(object):
                     self.list2config(v, diff_type=local_diff_type),
                 )
         return str_ret
+       
 
     def list2cli(self, list_in):
         if list_in is None:
