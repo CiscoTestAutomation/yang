@@ -108,10 +108,16 @@ ORDERLESS_COMMANDS = [
     (re.compile(r'^ *member vni '), 1),
     (re.compile(r'^ *ipv6 route '), 0),
     (re.compile(r'^ *ip route '), 0),
+<<<<<<< HEAD
     (re.compile(r'^ *aaa attribute list '), 0),
     (re.compile(r'^ *attribute type '), 1),
     (re.compile(r'^ *access-session attributes filter-list list '), 0),
     (re.compile(r'^ *(vlan-id|cdp|lldp|dhcpv6?|http)$'), 1),
+=======
+    (re.compile(r'^ *ip wccp '), 1),
+    (re.compile(r'^ *match identity remote '), 1),
+    (re.compile(r'^ *event manager environment '), 0),
+>>>>>>> main
 ]
 
 # Some commands can be overwritten without a no command. For example, changing
