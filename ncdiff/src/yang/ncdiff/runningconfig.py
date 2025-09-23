@@ -135,7 +135,6 @@ OVERWRITABLE_COMMANDS = [
 #   !
 SIBLING_CAMMANDS = [
     re.compile(r'^ *client '),
-    
 ]
 
 # As for the client command above, its children does not have indentation:
