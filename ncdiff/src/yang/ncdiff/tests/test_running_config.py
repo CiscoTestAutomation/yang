@@ -1301,8 +1301,8 @@ username guestshell privilege 0 password 7 03034E0E151B32444B0515
 username priv01 password 7 1209171E045B5D
         """
         config_2 = """
-username priv01 password 7 1209171E045B5D
 username guestshell privilege 0 password 7 03034E0E151B32444B0515
+username priv01 password 7 1209171E045B5D
         """
         running_diff = RunningConfigDiff(
             running1=config_1,
