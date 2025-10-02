@@ -7,7 +7,7 @@ Restconf implementation is coming next.
 """
 
 # metadata
-__version__ = "25.8"
+__version__ = "25.9"
 __author__ = (
     'Jonathan Yang <yuekyang@cisco.com>',
     'Siming Yuan <siyuan@cisco.com',
