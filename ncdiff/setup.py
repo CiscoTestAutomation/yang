@@ -141,9 +141,6 @@ setup(
         'Topic :: Software Development :: Testing',
     ],
 
-    # uses namespace package
-    namespace_packages = ['yang'],
-
     # project keywords
     keywords = 'pyats cisco-shared',
 
