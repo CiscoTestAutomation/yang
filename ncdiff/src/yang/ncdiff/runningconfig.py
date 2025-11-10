@@ -389,11 +389,16 @@ class RunningConfigDiff(object):
     @staticmethod
     def _normalize_passwords(config_text):
         """
-        Normalize Cisco type-6 password lines by replacing the hash
-        with a placeholder. This avoids diffs caused only by re-encryption
-        (salt changes) when the real password hasn't changed.
+        Replace any type-6 password hash with a fixed placeholder across
+        all relevant commands to avoid diffs caused only by  salted encryption.
         """
-        return re.sub(r'(password 6 )\S+', r'\1<ENCRYPTED>', config_text)
+        # Generic username/line vty etc.
+        config_text = re.sub(r'(password 6 )\S+', r'\1<ENCRYPTED>', config_text)
+        # SNMPv3 auth passwords
+        config_text = re.sub(r'(snmp-server user .* auth .* 6 )\S+', r'\1<ENCRYPTED>', config_text)
+        # SNMPv3 priv passwords
+        config_text = re.sub(r'(snmp-server user .* priv .* 6 )\S+', r'\1<ENCRYPTED>', config_text)
+        return config_text
 
     def running2list(self, str_in_1, str_in_2):
         for cmd in REPLACING_COMMANDS:

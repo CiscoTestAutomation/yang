@@ -1514,3 +1514,28 @@ vlan group test1 vlan-list 2,200
         self.assertEqual(running_diff.diff_reverse, None)
         self.assertEqual(running_diff.cli, '')
         self.assertEqual(running_diff.cli_reverse, '')
+
+    def test_type6_password_normalization(self):
+          # Simulate a before/after running-config where only the salted hash changes
+          config_1 = """
+  username USER2
+    privilege 15
+    password 6 SXdPJa_KhKdOGZFcgfZDINDi
+  snmp-server user USR1 GRP1 v3 auth sha-2 256 6 R[eG]FNhUbS]ZWQGR\\I]LHAJ priv aes 128 6 XJ`_RQgfFKEbD[FGU_EgUFgV access ACL1
+          """
+
+          config_2 = """
+  username USER2
+    privilege 15
+    password 6 _gILDII_i`JeNNCFB[PCFWWE
+  snmp-server user USR1 GRP1 v3 auth sha-2 256 6 _gILDII_i`JeNNCFB[PCFWWE priv aes 128 6 IGOe_LbUMG[WXXBPWD\\G_JSF access ACL1
+          """
+          running_diff = RunningConfigDiff(
+              running1=config_1,
+              running2=config_2,
+          )
+          self.assertFalse(running_diff)
+          self.assertEqual(running_diff.cli, '')
+          self.assertEqual(running_diff.cli_reverse, '')
+          self.assertIsNone(running_diff.diff)
+          self.assertIsNone(running_diff.diff_reverse)
