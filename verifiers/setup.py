@@ -12,7 +12,7 @@ import sys
 import shlex
 import unittest
 import subprocess
-from setuptools import setup, find_packages, Command
+from setuptools import setup, find_namespace_packages, Command
 
 pkg_name = 'yang.verifiers'
 pkg_path = '/'.join(pkg_name.split('.'))
@@ -158,7 +158,7 @@ setup(
     keywords='pyats cisco-shared',
 
     # project packages
-    packages=find_packages(where='src'),
+    packages=find_namespace_packages(where='src'),
 
     # project directory
     package_dir={
