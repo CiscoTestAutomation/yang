@@ -389,15 +389,35 @@ class RunningConfigDiff(object):
     @staticmethod
     def _normalize_passwords(config_text):
         """
-        Replace any type-6 password hash with a fixed placeholder across
-        all relevant commands to avoid diffs caused only by  salted encryption.
+        Normalize  Type-6 encrypted password and key hashes in a
+        running-configuration string to avoid false diffs caused by salted
+        re-encryption.
+        patterns include:
+        - "password 6 <hash>"
+        - "enable password 6 <hash>"
+        - "username <user> privilege <level> password 6 <hash>"
+        - "snmp-server user <user> <group> v3 auth <algo> [<bits>] 6 <hash>"
+        - "snmp-server user <user> <group> v3 ... priv <cipher> [...] 6 <hash>"
+        
+        Example:
+            Input:
+                username test privilege 15 password 6 aBc123...
+                snmp-server user USR1 GRP1 v3 auth sha 6 xYz456... priv aes 128 6 qWe789...
+            Output:
+                username test privilege 15 password 6 <ENCRYPTED>
+                snmp-server user USR1 GRP1 v3 auth sha 6 <ENCRYPTED> priv aes 128 6 <ENCRYPTED>
         """
-        # Generic username/line vty etc.
+        # Normalize line passwords, enable passwords, usernames
         config_text = re.sub(r'(password 6 )\S+', r'\1<ENCRYPTED>', config_text)
-        # SNMPv3 auth passwords
-        config_text = re.sub(r'(snmp-server user .* auth .* 6 )\S+', r'\1<ENCRYPTED>', config_text)
-        # SNMPv3 priv passwords
-        config_text = re.sub(r'(snmp-server user .* priv .* 6 )\S+', r'\1<ENCRYPTED>', config_text)
+        config_text = re.sub(r'(enable password 6 )\S+', r'\1<ENCRYPTED>', config_text)
+        config_text = re.sub(r'(username \S+ privilege \d+ password 6 )\S+', r'\1<ENCRYPTED>', config_text)
+
+        # Normalize SNMPv3 auth passwords (sha, sha-1, sha-2, md5, etc.)
+        config_text = re.sub(r'(snmp-server user \S+ \S+ v3 auth(?: \S+){1,3} 6 )\S+',r'\1<ENCRYPTED>',config_text)
+
+        # Normalize SNMPv3 priv passwords (aes, 3des)
+        config_text = re.sub(r'(snmp-server user \S+ \S+ v3 auth .* priv .* 6 )\S+',r'\1<ENCRYPTED>',config_text)
+
         return config_text
 
     def running2list(self, str_in_1, str_in_2):
