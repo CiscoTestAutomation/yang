@@ -564,18 +564,63 @@ class ConfigDelta(object):
     def device(self):
         return self.config_src.device
 
+    @staticmethod
+    def _mask_encrypted_passwords(xml_text):
+        """
+        Mask encrypted passwords so that salted type-6 values are never pushed
+        back to the device via NETCONF/YANG. IOS-XE does not accept hashed type-6
+        passwords, so we replace them with neutral placeholders.
+        """
+
+        # Mask generic <password>HASH</password>
+        xml_text = re.sub(
+            r'<password>[^<]+</password>',
+            r'<password><ENCRYPTED></ENCRYPTED></password>',
+            xml_text
+        )
+
+        # Mask <secret>HASH</secret> (enable password)
+        xml_text = re.sub(
+            r'<secret>[^<]+</secret>',
+            r'<secret><ENCRYPTED></ENCRYPTED></secret>',
+            xml_text
+        )
+
+        # SNMPv3 auth password
+        xml_text = re.sub(
+            r'<auth-config>.*?<password>[^<]+</password>',
+            r'<auth-config><password><ENCRYPTED></ENCRYPTED></password>',
+            xml_text,
+            flags=re.DOTALL
+        )
+
+        # SNMPv3 priv password
+        xml_text = re.sub(
+            r'<priv-config>.*?<password>[^<]+</password>',
+            r'<priv-config><password><ENCRYPTED></ENCRYPTED></password>',
+            xml_text,
+            flags=re.DOTALL
+        )
+
+        return xml_text
+
     @property
     def nc(self):
-        return NetconfCalculator(
-            self.device,
-            self.config_dst.ele, self.config_src.ele,
-            preferred_create=self.preferred_create,
-            preferred_replace=self.preferred_replace,
-            preferred_delete=self.preferred_delete,
-            diff_type=self.diff_type,
-            replace_depth=self.replace_depth,
-            replace_xpath=self.replace_xpath,
-        ).sub
+        raw_nc = NetconfCalculator(
+        self.device,
+        self.config_dst.ele, self.config_src.ele,
+        preferred_create=self.preferred_create,
+        preferred_replace=self.preferred_replace,
+        preferred_delete=self.preferred_delete,
+        diff_type=self.diff_type,
+        replace_depth=self.replace_depth,
+        replace_xpath=self.replace_xpath,
+    ).sub
+        xml_text = etree.tostring(raw_nc, encoding="unicode")
+
+        xml_text = self._mask_encrypted_passwords(xml_text)
+
+        return etree.fromstring(xml_text)
     
     @property
     def rc(self):
