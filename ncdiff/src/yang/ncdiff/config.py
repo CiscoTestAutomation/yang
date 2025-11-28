@@ -86,6 +86,7 @@ class Config(object):
             raise TypeError("argument 'config' must be None, XML string, " \
                             "or Element, but not '{}'" \
                             .format(type(config)))
+        self._sanitize_encrypted_secrets()
         if validate:
             self.validate_config()
 
@@ -440,6 +441,37 @@ class Config(object):
         else:
             node.getparent().remove(node)
 
+    @staticmethod
+    def _local_name(tag):
+        if '}' in tag:
+            return tag.split('}', 1)[1]
+        return tag
+
+    @classmethod
+    def _has_type_six(cls, node):
+        parent = node.getparent()
+        if parent is None:
+            return False
+        for sibling in parent:
+            if sibling is node:
+                continue
+            local = cls._local_name(sibling.tag)
+            if local in ('type', 'encryption'):
+                if (sibling.text or '').strip() == '6':
+                    return True
+        return False
+
+    def _sanitize_encrypted_secrets(self):
+        for node in self.ele.iter():
+            local = self._local_name(node.tag)
+            if local not in ('password', 'secret'):
+                continue
+            if not node.text:
+                continue
+            if not self._has_type_six(node):
+                continue
+            node.text = 'ENCRYPTED'
+
 
 class ConfigDelta(object):
     '''ConfigDelta
@@ -537,11 +569,7 @@ class ConfigDelta(object):
         else:
             raise ValueError("only 'delete' or 'remove' are valid "
                              "values of 'preferred_delete'")
-        
-        src_xml = etree.tostring(config_src.ele, encoding="unicode")
-        src_xml = self._mask_encrypted_passwords(src_xml)
-        self.config_src = Config(config_src.device, src_xml)
-
+        self.config_src = config_src
         if delta is not None:
             if isinstance(delta, str) or etree.iselement(delta):
                 delta = NetconfParser(self.device, delta).ele
@@ -553,12 +581,6 @@ class ConfigDelta(object):
             raise TypeError("argument 'config_dst' must be "
                             "yang.ncdiff.Config or None, but not '{}'"
                             .format(type(config_dst)))
-        
-        if config_dst is not None:
-            dst_xml = etree.tostring(config_dst.ele, encoding="unicode")
-            dst_xml = self._mask_encrypted_passwords(dst_xml)
-            config_dst = Config(config_dst.device, dst_xml)
-
         self.config_dst = config_dst
         if self.config_dst is None and delta is None:
             self.config_dst = self.config_src
@@ -566,10 +588,7 @@ class ConfigDelta(object):
             if self.config_dst is not None:
                 logger.warning("argument 'config_dst' is ignored as 'delta' "
                                "is provided")
-            merged = self.config_src + delta
-            merged_xml = etree.tostring(merged.ele, encoding="unicode")
-            merged_xml = self._mask_encrypted_passwords(merged_xml)
-            self.config_dst = Config(self.config_src.device, merged_xml)
+            self.config_dst = self.config_src + delta
         else:
             ConfigCompatibility(self.config_src, self.config_dst).is_compatible
 
@@ -577,40 +596,18 @@ class ConfigDelta(object):
     def device(self):
         return self.config_src.device
 
-    @staticmethod
-    def _mask_encrypted_passwords(xml_text):
-        root = etree.fromstring(xml_text.encode())
-
-        # Get ALL password nodes
-        password_nodes = root.xpath("//*[local-name()='password']")
-
-        for pwd in password_nodes:
-            # Look for <type>6</type> inside this password node
-            type_node = pwd.xpath(".//*[local-name()='type' and text()='6']")
-            if type_node:
-                # Mask <secret> inside this password node
-                secret_node = pwd.xpath(".//*[local-name()='secret']")
-                for secret in secret_node:
-                    if secret.text:
-                        secret.text = "ENCRYPTED"
-
-        return etree.tostring(root, encoding='unicode')
-    
     @property
     def nc(self):
-        raw_nc = NetconfCalculator(
-        self.device,
-        self.config_dst.ele, self.config_src.ele,
-        preferred_create=self.preferred_create,
-        preferred_replace=self.preferred_replace,
-        preferred_delete=self.preferred_delete,
-        diff_type=self.diff_type,
-        replace_depth=self.replace_depth,
-        replace_xpath=self.replace_xpath,
-    ).sub
-        xml_text = etree.tostring(raw_nc, encoding="unicode")
-        xml_text = self._mask_encrypted_passwords(xml_text)
-        return etree.fromstring(xml_text.encode())
+        return NetconfCalculator(
+            self.device,
+            self.config_dst.ele, self.config_src.ele,
+            preferred_create=self.preferred_create,
+            preferred_replace=self.preferred_replace,
+            preferred_delete=self.preferred_delete,
+            diff_type=self.diff_type,
+            replace_depth=self.replace_depth,
+            replace_xpath=self.replace_xpath,
+        ).sub
     
     @property
     def rc(self):
@@ -646,22 +643,11 @@ class ConfigDelta(object):
         return etree.tostring(self.nc, encoding='unicode', pretty_print=True)
 
     def __neg__(self):
-        dst_xml = etree.tostring(self.config_dst.ele, encoding="unicode")
-        dst_xml = self._mask_encrypted_passwords(dst_xml)
-        masked_src = Config(self.config_dst.device, dst_xml)
-        src_xml = etree.tostring(self.config_src.ele, encoding="unicode")
-        src_xml = self._mask_encrypted_passwords(src_xml)
-        masked_dst = Config(self.config_src.device, src_xml)
-        return ConfigDelta(
-            config_src=masked_src,
-            config_dst=masked_dst,
-            preferred_create=self.preferred_create,
-            preferred_replace=self.preferred_replace,
-            preferred_delete=self.preferred_delete,
-            diff_type=self.diff_type,
-            replace_depth=self.replace_depth,
-            replace_xpath=self.replace_xpath,
-        )
+        return ConfigDelta(config_src=self.config_dst,
+                           config_dst=self.config_src,
+                           preferred_create=self.preferred_create,
+                           preferred_replace=self.preferred_replace,
+                           preferred_delete=self.preferred_delete)
 
     def __pos__(self):
         return self
