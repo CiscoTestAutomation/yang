@@ -392,20 +392,6 @@ class RunningConfigDiff(object):
         Normalize  Type-6 encrypted password and key hashes in a
         running-configuration string to avoid false diffs caused by salted
         re-encryption.
-        patterns include:
-        - "password 6 <hash>"
-        - "enable password 6 <hash>"
-        - "username <user> privilege <level> password 6 <hash>"
-        - "snmp-server user <user> <group> v3 auth <algo> [<bits>] 6 <hash>"
-        - "snmp-server user <user> <group> v3 ... priv <cipher> [...] 6 <hash>"
-        
-        Example:
-            Input:
-                username test privilege 15 password 6 aBc123...
-                snmp-server user USR1 GRP1 v3 auth sha 6 xYz456... priv aes 128 6 qWe789...
-            Output:
-                username test privilege 15 password 6 <ENCRYPTED>
-                snmp-server user USR1 GRP1 v3 auth sha 6 <ENCRYPTED> priv aes 128 6 <ENCRYPTED>
         """
         # Normalize line passwords, enable passwords, usernames
         config_text = re.sub(r'(password 6 )\S+', r'\1<ENCRYPTED>', config_text)
