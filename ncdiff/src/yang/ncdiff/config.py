@@ -86,7 +86,6 @@ class Config(object):
             raise TypeError("argument 'config' must be None, XML string, " \
                             "or Element, but not '{}'" \
                             .format(type(config)))
-        self._sanitize_encrypted_secrets()
         if validate:
             self.validate_config()
 
@@ -440,37 +439,6 @@ class Config(object):
                         node.remove(child)
         else:
             node.getparent().remove(node)
-
-    @staticmethod
-    def _local_name(tag):
-        if '}' in tag:
-            return tag.split('}', 1)[1]
-        return tag
-
-    @classmethod
-    def _has_type_six(cls, node):
-        parent = node.getparent()
-        if parent is None:
-            return False
-        for sibling in parent:
-            if sibling is node:
-                continue
-            local = cls._local_name(sibling.tag)
-            if local in ('type', 'encryption'):
-                if (sibling.text or '').strip() == '6':
-                    return True
-        return False
-
-    def _sanitize_encrypted_secrets(self):
-        for node in self.ele.iter():
-            local = self._local_name(node.tag)
-            if local not in ('password', 'secret'):
-                continue
-            if not node.text:
-                continue
-            if not self._has_type_six(node):
-                continue
-            node.text = 'ENCRYPTED'
 
 
 class ConfigDelta(object):
