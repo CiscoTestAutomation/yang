@@ -385,11 +385,33 @@ class RunningConfigDiff(object):
                 return negative_str
         else:
             return ''
+        
+    @staticmethod
+    def _normalize_passwords(config_text):
+        """
+        Normalize  Type-6 encrypted password and key hashes in a
+        running-configuration string to avoid false diffs caused by salted
+        re-encryption.
+        """
+        # Normalize line passwords, enable passwords, usernames
+        config_text = re.sub(r'(password 6 )\S+', r'\1<ENCRYPTED>', config_text)
+        config_text = re.sub(r'(enable password 6 )\S+', r'\1<ENCRYPTED>', config_text)
+        config_text = re.sub(r'(username \S+ privilege \d+ password 6 )\S+', r'\1<ENCRYPTED>', config_text)
+
+        # Normalize SNMPv3 auth passwords (sha, sha-1, sha-2, md5, etc.)
+        config_text = re.sub(r'(snmp-server user \S+ \S+ v3 auth(?: \S+){1,3} 6 )\S+',r'\1<ENCRYPTED>',config_text)
+
+        # Normalize SNMPv3 priv passwords (aes, 3des)
+        config_text = re.sub(r'(snmp-server user \S+ \S+ v3 auth .* priv .* 6 )\S+',r'\1<ENCRYPTED>',config_text)
+
+        return config_text
 
     def running2list(self, str_in_1, str_in_2):
         for cmd in REPLACING_COMMANDS:
             str_in_1 = str_in_1.replace(*cmd)
             str_in_2 = str_in_2.replace(*cmd)
+        str_in_1 = self._normalize_passwords(str_in_1)
+        str_in_2 = self._normalize_passwords(str_in_2)
         list_1 = self.config2list(str_in_1)
         list_2 = self.config2list(str_in_2)
         return self.handle_orderless(list_1, list_2, 0)
