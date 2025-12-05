@@ -1,6 +1,6 @@
 import os
 import re
-
+from copy import deepcopy
 import logging
 from lxml import etree
 from ncclient import manager, operations, transport, xml_
@@ -361,7 +361,7 @@ class ModelDevice(Netconf):
         else:
             logger.info(f'Model {model} is already loaded')
             return self.models[model]
-
+        
     def execute(self, operation, *args, **kwargs):
         '''execute
 
@@ -503,6 +503,25 @@ class ModelDevice(Netconf):
            isinstance(reply, transport.notify.Notification):
             reply.ns = self._get_ns(reply._root_ele)
         return reply
+    
+    def _mask_encrypted_values(self, element):
+   
+        for node in element.iter():
+            if not node.text:
+                continue
+
+            text = node.text.strip()
+            tag  = node.tag.lower()
+
+            if "snmp" in tag and ("password" in tag or "secret" in tag):
+                node.text = "ENCRYPTED"
+                continue
+
+            # IOS-XE encrypted secrets are ALWAYS long (Type 6)
+            if ("password" in tag or "secret" in tag) and len(text) > 12:
+                node.text = "ENCRYPTED"
+                continue
+
 
     def extract_config(self, reply, type='netconf'):
         '''extract_config
@@ -551,6 +570,13 @@ class ModelDevice(Netconf):
 
         config = Config(self, reply)
         remove_read_only(config.ele)
+        config.ele_original = deepcopy(config.ele)
+        if type == 'netconf':
+            masked_copy = deepcopy(config.ele_original)
+            self._mask_encrypted_values(masked_copy)
+            config.ele = masked_copy
+        else:
+            config.ele = config.ele_original
         return config
 
     def get_schema_node(self, config_node):
