@@ -566,9 +566,11 @@ class ConfigDelta(object):
 
     @property
     def nc(self):
+        src = getattr(self.config_src, "ele_original", self.config_src.ele)
+        dst = getattr(self.config_dst, "ele_original", self.config_dst.ele)
         return NetconfCalculator(
             self.device,
-            self.config_dst.ele, self.config_src.ele,
+            dst, src,
             preferred_create=self.preferred_create,
             preferred_replace=self.preferred_replace,
             preferred_delete=self.preferred_delete,
