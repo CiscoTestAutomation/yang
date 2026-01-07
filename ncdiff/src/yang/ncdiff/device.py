@@ -550,7 +550,6 @@ class ModelDevice(Netconf):
 
         config = Config(self, reply)
         remove_read_only(config.ele)
-        config.ele = config.ele_original
         return config
 
     def get_schema_node(self, config_node):
