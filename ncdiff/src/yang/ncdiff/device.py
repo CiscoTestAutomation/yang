@@ -1,6 +1,5 @@
 import os
 import re
-from copy import deepcopy
 import logging
 from lxml import etree
 from ncclient import manager, operations, transport, xml_
@@ -504,39 +503,6 @@ class ModelDevice(Netconf):
             reply.ns = self._get_ns(reply._root_ele)
         return reply
     
-    def _mask_encrypted_values(self, element):
-        """
-            This function walks the given XML element tree and replaces sensitive
-            encrypted values with the placeholder string "ENCRYPTED". Masking is applied
-            only to GET/GET-CONFIG output.
-
-            Note:
-            Masking is used only for output visibility. Internal diff/edit-config
-            logic must operate on unmasked values to avoid device-side failures.
-
-            Returns:
-
-                None. The input element tree is modified in place.
-        """
-   
-        for node in element.iter():
-            if not node.text:
-                continue
-
-            text = node.text.strip()
-            tag  = node.tag.lower()
-            
-            # Mask all SNMPv3 auth/priv passwords and secrets explicitly
-            if "snmp" in tag and ("password" in tag or "secret" in tag):
-                node.text = "ENCRYPTED"
-                continue
-
-            # IOS-XE encrypted secrets are ALWAYS long (Type 6)
-            if ("password" in tag or "secret" in tag) and len(text) > 12:
-                node.text = "ENCRYPTED"
-                continue
-
-
     def extract_config(self, reply, type='netconf'):
         '''extract_config
 
@@ -584,18 +550,7 @@ class ModelDevice(Netconf):
 
         config = Config(self, reply)
         remove_read_only(config.ele)
-
-        # deepcopy of config.ele to store unmasked ele_original
-        config.ele_original = deepcopy(config.ele)
-
-        if type == 'netconf':
-            # Apply masking only to NETCONF get/get-config output
-            masked_copy = deepcopy(config.ele_original)
-            self._mask_encrypted_values(masked_copy)
-            config.ele = masked_copy
-        else:
-            # Use unmasked config for all other operations
-            config.ele = config.ele_original
+        config.ele = config.ele_original
         return config
 
     def get_schema_node(self, config_node):
