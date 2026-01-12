@@ -324,21 +324,33 @@ class RunningConfigDiff(object):
         CLIs that transits from running2 to running1.
     '''
 
-    def __init__(self, running1, running2):
+    def __init__(self, running1, running2, mask=False, mask_filter=None,mask_compare=False):
         '''
         __init__ instantiates a RunningConfigDiff instance.
         '''
 
         self.running1 = running1
         self.running2 = running2
+        self.mask = mask
+        self.mask_filter =  mask_filter or []
+        self.mask_compare = mask_compare
         self._diff_list = None
         self._diff_list_reverse = None
 
     def __bool__(self):
+        # When masking is enabled, compare MASKED running-configs
+        if self.mask_compare and self.mask and self.mask_filter:
+            r1 = self._mask_text(self.running1, True, self.mask_filter)
+            r2 = self._mask_text(self.running2, True, self.mask_filter)
+
+            list1, list2 = self.running2list(r1, r2)
+            return bool(ListDiff(list1, list2).diff)
+        # Default behavior
         return bool(self.diff)
 
     def __str__(self):
-        return self.list2config(self.diff, diff_type='')
+        diff_text = self.list2config(self.diff, diff_type='')
+        return self._mask_text(diff_text, self.mask, self.mask_filter)
 
     def __eq__(self, other):
         if str(self) == str(other):
@@ -372,6 +384,22 @@ class RunningConfigDiff(object):
         diff_list = self._diff_list_reverse if reverse else self._diff_list
         return diff_list if diff_list else None
 
+
+    @staticmethod
+    def _mask_text(text, mask, mask_filter=None):
+        """
+        Mask ONLY when:
+          - mask is True
+          - mask_filter is provided
+        """
+        if not mask or not mask_filter:
+            return text
+
+        for pattern in mask_filter:
+            text = re.sub(pattern, r'\1<ENCRYPTED>', text, flags=re.MULTILINE)
+
+        return text
+
     def get_cli(self, reverse=False):
         diff_list = self.get_diff(reverse=reverse)
         if diff_list:
@@ -385,33 +413,12 @@ class RunningConfigDiff(object):
                 return negative_str
         else:
             return ''
-        
-    @staticmethod
-    def _normalize_passwords(config_text):
-        """
-        Normalize  Type-6 encrypted password and key hashes in a
-        running-configuration string to avoid false diffs caused by salted
-        re-encryption.
-        """
-        # Normalize line passwords, enable passwords, usernames
-        config_text = re.sub(r'(password 6 )\S+', r'\1<ENCRYPTED>', config_text)
-        config_text = re.sub(r'(enable password 6 )\S+', r'\1<ENCRYPTED>', config_text)
-        config_text = re.sub(r'(username \S+ privilege \d+ password 6 )\S+', r'\1<ENCRYPTED>', config_text)
 
-        # Normalize SNMPv3 auth passwords (sha, sha-1, sha-2, md5, etc.)
-        config_text = re.sub(r'(snmp-server user \S+ \S+ v3 auth(?: \S+){1,3} 6 )\S+',r'\1<ENCRYPTED>',config_text)
-
-        # Normalize SNMPv3 priv passwords (aes, 3des)
-        config_text = re.sub(r'(snmp-server user \S+ \S+ v3 auth .* priv .* 6 )\S+',r'\1<ENCRYPTED>',config_text)
-
-        return config_text
 
     def running2list(self, str_in_1, str_in_2):
         for cmd in REPLACING_COMMANDS:
             str_in_1 = str_in_1.replace(*cmd)
             str_in_2 = str_in_2.replace(*cmd)
-        str_in_1 = self._normalize_passwords(str_in_1)
-        str_in_2 = self._normalize_passwords(str_in_2)
         list_1 = self.config2list(str_in_1)
         list_2 = self.config2list(str_in_2)
         return self.handle_orderless(list_1, list_2, 0)
