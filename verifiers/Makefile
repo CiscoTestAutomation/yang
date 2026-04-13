@@ -29,8 +29,10 @@ PROD_PKGS     = /auto/pyats/packages
 STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages_external
 PYTHON        = python3
+PIP           = $(PYTHON) -m pip
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
+BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
         develop undevelop populate_dist_dir help docs distribute_docs test
@@ -83,8 +85,9 @@ develop:
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@pip3 uninstall -y $(PKG_NAME) || true
-	@$(PYTHON) -m pip install -e . --no-deps
+	@$(PIP) uninstall -y $(PKG_NAME) || true
+	@$(PIP) install $(BUILD_DEPENDENCIES)
+	@$(PIP) install --no-build-isolation -e . --no-deps
 
 	@echo "Completed building and installing: $@"
 	@echo ""

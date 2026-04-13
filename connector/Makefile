@@ -29,11 +29,13 @@ PROD_PKGS     = /auto/pyats/packages
 STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages_external
 PYTHON        = python3
+PIP           = $(PYTHON) -m pip
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
 
 DEPENDENCIES = "paramiko >= 1.15.1" "lxml >= 3.3.0" \
 				"ncclient >= 0.6.6" grpcio protobuf
+BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build
 
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
@@ -87,9 +89,9 @@ develop:
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@pip3 uninstall -y yang.connector || true
-	@pip install $(DEPENDENCIES) build
-	@pip install -e . --no-deps
+	@$(PIP) uninstall -y yang.connector || true
+	@$(PIP) install $(DEPENDENCIES) $(BUILD_DEPENDENCIES)
+	@$(PIP) install --no-build-isolation -e . --no-deps
 
 	@echo "Completed building and installing: $@"
 	@echo ""

@@ -29,12 +29,14 @@ PROD_PKGS     = /auto/pyats/packages
 STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages_external
 PYTHON        = python3
+PIP           = $(PYTHON) -m pip
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
 
 DEPENDENCIES = "pyang >= 1.7.3" "ncclient >= 0.6.3" \
 				"requests >= 2.18.4" "xmljson >= 0.1.9" \
 				"yang.connector >= 3.0.0"
+BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
         develop undevelop populate_dist_dir help docs distribute_docs test
@@ -87,9 +89,9 @@ develop:
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@pip3 uninstall -y yang.ncdiff || true
-	@pip install $(DEPENDENCIES) build
-	@pip install -e . --no-deps
+	@$(PIP) uninstall -y yang.ncdiff || true
+	@$(PIP) install $(DEPENDENCIES) $(BUILD_DEPENDENCIES)
+	@$(PIP) install --no-build-isolation -e . --no-deps
 
 	@echo "Completed building and installing: $@"
 	@echo ""
