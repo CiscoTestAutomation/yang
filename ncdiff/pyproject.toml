@@ -1,0 +1,60 @@
+[build-system]
+requires = [
+    "meson-python",
+    "meson>=1.10.0",
+    "ninja",
+]
+build-backend = "mesonpy"
+
+[project]
+name = "yang.ncdiff"
+version = "26.3"
+description = "A config state diff calculator for NETCONF"
+requires-python = ">=3.9"
+authors = [
+    { name = "Jonathan Yang", email = "yang-python@cisco.com" },
+]
+keywords = [
+    "pyats",
+    "cisco-shared",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Telecommunications Industry",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pyang >= 1.7.3",
+    "ncclient >= 0.6.3",
+    "requests >= 2.18.4",
+    "xmljson >= 0.1.9",
+    "yang.connector >= 3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",
+    "restview",
+    "Sphinx",
+    "sphinxcontrib-napoleon",
+    "sphinx-rtd-theme",
+]
+
+[project.urls]
+Homepage = "https://developer.cisco.com/pyats"
+
+[tool.meson-python.wheel]
+include = [
+    "*.py",
+    "*.txt",
+]

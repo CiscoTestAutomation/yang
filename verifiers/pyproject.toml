@@ -1,0 +1,55 @@
+[build-system]
+requires = [
+    "meson-python",
+    "meson>=1.10.0",
+    "ninja",
+]
+build-backend = "mesonpy"
+
+[project]
+name = "yang.verifiers"
+version = "1.0"
+description = "YANG defined interface API protocol connector"
+requires-python = ">=3.9"
+authors = [
+    { name = "Kacper Szmitko", email = "mpte-support@cisco.com" },
+]
+keywords = [
+    "pyats",
+    "cisco-shared",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Telecommunications Industry",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "genie",
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",
+    "restview",
+    "Sphinx",
+    "sphinxcontrib-napoleon",
+    "sphinx-rtd-theme",
+]
+
+[project.urls]
+Homepage = "https://developer.cisco.com/pyats"
+
+[tool.meson-python.wheel]
+include = [
+    "*.py",
+]

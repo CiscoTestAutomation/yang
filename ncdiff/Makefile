@@ -58,7 +58,7 @@ docs:
 	@echo "Building $(PKG_NAME) documentation for preview: $@"
 	@echo ""
 
-	@$(PYTHON) setup.py docs
+	@sphinx-build -b html -c docs -d ./__build__/documentation/doctrees docs/ ./__build__/documentation/html
 
 	@echo "Completed building docs for preview."
 	@echo ""
@@ -74,7 +74,7 @@ package:
 	@echo "Building $(PKG_NAME) distributable: $@"
 	@echo ""
 
-	@$(PYTHON) setup.py bdist_wheel --dist-dir=$(DISTDIR)
+	@$(PYTHON) -m build --wheel --outdir=$(DISTDIR)
 
 	@echo "Completed building: $@"
 	@echo ""
@@ -88,7 +88,7 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y yang.ncdiff || true
-	@pip install $(DEPENDENCIES)
+	@pip install $(DEPENDENCIES) build
 	@pip install -e . --no-deps
 
 	@echo "Completed building and installing: $@"
@@ -115,7 +115,9 @@ clean:
 	@echo "Removing make directory: $(BUILDDIR)"
 	@rm -rf $(BUILDDIR)
 	@echo "Removing build artifacts ..."
-	@$(PYTHON) setup.py clean
+	@find . -type f -name "*.pyc" -delete
+	@find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	@find . -type d -name "build" -prune -exec rm -rf {} +
 	@echo ""
 	@echo "Done."
 	@echo ""

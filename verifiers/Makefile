@@ -70,8 +70,7 @@ package:
 	@echo "Building $(PKG_NAME) distributable: $@"
 	@echo ""
 
-	@$(PYTHON) setup.py bdist_wheel --dist-dir=$(DISTDIR)
-	@$(PYTHON) setup.py sdist --dist-dir=$(DISTDIR)
+	@$(PYTHON) -m build --wheel --outdir=$(DISTDIR)
 
 	@echo "Completed building: $@"
 	@echo ""
@@ -85,7 +84,7 @@ develop:
 	@echo ""
 
 	@pip3 uninstall -y $(PKG_NAME) || true
-	@$(PYTHON) setup.py develop -q
+	@$(PYTHON) -m pip install -e . --no-deps
 
 	@echo "Completed building and installing: $@"
 	@echo ""
@@ -98,7 +97,7 @@ undevelop:
 	@echo "Uninstalling $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@$(PYTHON) setup.py develop -q --uninstall
+	@$(PYTHON) -m pip install -e . --no-deps --uninstall
 
 	@echo "Completed uninstalling: $@"
 	@echo ""
@@ -111,7 +110,9 @@ clean:
 	@echo "Removing make directory: $(BUILDDIR)"
 	@rm -rf $(BUILDDIR)
 	@echo "Removing build artifacts ..."
-	@$(PYTHON) setup.py clean
+	@find . -type f -name "*.pyc" -delete
+	@find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	@find . -type d -name "build" -prune -exec rm -rf {} +
 	@echo ""
 	@echo "Done."
 	@echo ""
