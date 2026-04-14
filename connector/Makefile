@@ -36,10 +36,12 @@ DISTDIR       = $(BUILDDIR)/dist
 DEPENDENCIES = "paramiko >= 1.15.1" "lxml >= 3.3.0" \
 				"ncclient >= 0.6.6" grpcio protobuf
 BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build 'patchelf>=0.11.0; sys_platform == "linux"'
+SITE_PACKAGES = $(shell $(PYTHON) -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+DEVELOP_PATH_FILE = $(SITE_PACKAGES)/yang-connector-dev-path.pth
 
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
-        develop undevelop populate_dist_dir help docs distribute_docs test
+        develop develop-install undevelop populate_dist_dir help docs distribute_docs test
 
 help:
 	@echo "Please use 'make <target>' where <target> is one of"
@@ -50,7 +52,8 @@ help:
 	@echo "distribute_staging            : Distribute the package to staging area"
 	@echo "distribute_staging_external   : Distribute the package to external staging area"
 	@echo "clean                         : Remove build artifacts"
-	@echo "develop                       : Build and install development package"
+	@echo "develop                       : Add the source tree to sys.path in the active env"
+	@echo "develop-install               : Build and install development package"
 	@echo "undevelop                     : Uninstall development package"
 	@echo "html                          : Build Sphinx documentation for this package"
 
@@ -83,7 +86,7 @@ package:
 	@echo "Done."
 	@echo ""
 
-develop:
+develop-install:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Building and installing $(PKG_NAME) development distributable: $@"
@@ -93,6 +96,19 @@ develop:
 	@$(PIP) install $(DEPENDENCIES) $(BUILD_DEPENDENCIES)
 	@$(PIP) install --no-build-isolation -e . --no-deps
 
+	@echo "Completed building and installing: $@"
+	@echo ""
+	@echo "Done."
+	@echo ""
+
+develop:
+	@echo ""
+	@echo "--------------------------------------------------------------------"
+	@echo "Setting up path-based development environment"
+	@$(PIP) uninstall -y $(PKG_NAME) || true
+	@$(PIP) install $(DEPENDENCIES)
+	@rm -f "$(DEVELOP_PATH_FILE)"
+	@printf "%s\n" "$(CURDIR)/src" > "$(DEVELOP_PATH_FILE)"
 	@echo "Completed building and installing: $@"
 	@echo ""
 	@echo "Done."
