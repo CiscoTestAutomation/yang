@@ -36,7 +36,7 @@ DISTDIR       = $(BUILDDIR)/dist
 DEPENDENCIES = "pyang >= 1.7.3" "ncclient >= 0.6.3" \
 				"requests >= 2.18.4" "xmljson >= 0.1.9" \
 				"yang.connector >= 3.0.0"
-BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build
+BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build 'patchelf>=0.11.0; sys_platform == "linux"'
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
         develop undevelop populate_dist_dir help docs distribute_docs test

@@ -35,7 +35,7 @@ DISTDIR       = $(BUILDDIR)/dist
 
 DEPENDENCIES = "paramiko >= 1.15.1" "lxml >= 3.3.0" \
 				"ncclient >= 0.6.6" grpcio protobuf
-BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build
+BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build 'patchelf>=0.11.0; sys_platform == "linux"'
 
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\

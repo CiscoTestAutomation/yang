@@ -32,7 +32,7 @@ PYTHON        = python3
 PIP           = $(PYTHON) -m pip
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
-BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build
+BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build 'patchelf>=0.11.0; sys_platform == "linux"'
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
         develop undevelop populate_dist_dir help docs distribute_docs test
