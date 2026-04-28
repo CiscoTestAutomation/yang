@@ -1,22 +1,23 @@
-November 2024
-=============
+April 2026
+==========
 
-November 26 - Yang v24.11
--------------------------
+April 28 - Yang v26.4
+---------------------
 
 
 
 .. csv-table:: New Module Versions
     :header: "Modules", "Version"
 
-    ``yang.connector``, v24.11
-    ``yang.ncdiff``, v24.11
+    ``yang.connector``, v26.4
+    ``yang.ncdiff``, v26.4
 
 
 
 
 Changelogs
 ^^^^^^^^^^
+
 
 yang.connector
 """"""""""""""

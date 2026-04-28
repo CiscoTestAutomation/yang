@@ -457,7 +457,7 @@ Python Code:
     >>>
 
 GNMI Examples
-========
+=============
 Here are some usage examples of GNMI client. For more details see `API Refernce <https://yangconnector.readthedocs.io/en/latest/apidocs.html>`_.
 
 Python Code:
