@@ -1,7 +1,7 @@
 January 2025
 ============
 
-- Yang v25.1
+Yang v25.1
 ------------------------
 
 
@@ -47,5 +47,4 @@ Fix
 * yang.ncdiff
     * Deprecated python3 setup.py
     * Fix syntax warning
-
 
