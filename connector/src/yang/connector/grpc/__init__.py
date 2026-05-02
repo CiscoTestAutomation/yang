@@ -22,43 +22,43 @@ class Grpc(BaseConnection):
 
         Can be used with pyATS same as yang.connector
 
-        EXAMPLE TESTBED
+        EXAMPLE TESTBED::
 
-        devices:
-          router-1:
-            connections:
-              a:
-                ip: 10.10.0.1
-                port: 23
-                protocol: telnet
-              grpc:
-                protocol: grpc
-                class: yang.connector.Grpc
-                overwrite_config_file: True                                     (Optional, default: False)
-                config_file: /Users/user/telemetry/router_1/config.conf         (Optional, default: ./transporter.conf)
-                output_file: /Users/user/telemetry/router_1/output.txt          (Optional, default: ./mdt.json)
-                telemetry_subscription_id: 501                                  (Optional, default: 11172017)
-                transporter: telegraf                                           (Optional, default: telegraf)
-                transporter_ip: 192.168.0.253                                   (Optional, default will fetch local IP)
-                transporter_port: 56789                                         (Optional, default is a dynamic port)
-                autoconfigure: True                                             (Optional, default: True)
-            credentials:
-              default:
-                username: user
-                password: cisco123
-            os: iosxe
+            devices:
+              router-1:
+                connections:
+                  a:
+                    ip: 10.10.0.1
+                    port: 23
+                    protocol: telnet
+                  grpc:
+                    protocol: grpc
+                    class: yang.connector.Grpc
+                    overwrite_config_file: True                                     (Optional, default: False)
+                    config_file: /Users/user/telemetry/router_1/config.conf         (Optional, default: ./transporter.conf)
+                    output_file: /Users/user/telemetry/router_1/output.txt          (Optional, default: ./mdt.json)
+                    telemetry_subscription_id: 501                                  (Optional, default: 11172017)
+                    transporter: telegraf                                           (Optional, default: telegraf)
+                    transporter_ip: 192.168.0.253                                   (Optional, default will fetch local IP)
+                    transporter_port: 56789                                         (Optional, default is a dynamic port)
+                    autoconfigure: True                                             (Optional, default: True)
+                credentials:
+                  default:
+                    username: user
+                    password: cisco123
+                os: iosxe
 
-        EXAMPLE USAGE
+        EXAMPLE USAGE::
 
-        Welcome to pyATS Interactive Shell
-        ==================================
-        Python 3.11.5 (main, Sep 25 2023, 16:57:00) [Clang 14.0.0 (clang-1400.0.29.202)]
+            Welcome to pyATS Interactive Shell
+            ==================================
+            Python 3.11.5 (main, Sep 25 2023, 16:57:00) [Clang 14.0.0 (clang-1400.0.29.202)]
 
-        >>> from pyats.topology.loader import load
-        >>> testbed = load('/Users/user/testbed.yaml')
-        -------------------------------------------------------------------------------
-        >>> dev = testbed.devices['router-1.yaml']
-        >>> dev.connect(via='grpc', alias='grpc')
+            >>> from pyats.topology.loader import load
+            >>> testbed = load('/Users/user/testbed.yaml')
+            -------------------------------------------------------------------------------
+            >>> dev = testbed.devices['router-1.yaml']
+            >>> dev.connect(via='grpc', alias='grpc')
 
     """
     def __new__(cls, *args, **kwargs):
