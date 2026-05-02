@@ -30,6 +30,7 @@ STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages_external
 PYTHON        = python3
 PIP           = $(PYTHON) -m pip
+MESON_HELPER  = cisco-meson
 TESTCMD       = cd tests; runAll
 DISTDIR       = $(BUILDDIR)/dist
 
@@ -38,6 +39,8 @@ DEPENDENCIES = "paramiko >= 1.15.1" "lxml >= 3.3.0" \
 BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build 'patchelf>=0.11.0; sys_platform == "linux"'
 SITE_PACKAGES = $(shell $(PYTHON) -c "import sysconfig; print(sysconfig.get_path('purelib'))")
 DEVELOP_PATH_FILE = $(SITE_PACKAGES)/yang-connector-dev-path.pth
+EDITABLE_PTH_FILE = $(SITE_PACKAGES)/yang-connector-editable.pth
+EDITABLE_LOADER_FILE = $(SITE_PACKAGES)/_yang_connector_editable_loader.py
 
 
 .PHONY: clean package distribute distribute_staging distribute_staging_external\
@@ -106,9 +109,8 @@ develop:
 	@echo "--------------------------------------------------------------------"
 	@echo "Setting up path-based development environment"
 	@$(PIP) uninstall -y $(PKG_NAME) || true
-	@$(PIP) install $(DEPENDENCIES)
-	@rm -f "$(DEVELOP_PATH_FILE)"
-	@printf "%s\n" "$(CURDIR)/src" > "$(DEVELOP_PATH_FILE)"
+	@$(PIP) install --no-build-isolation $(DEPENDENCIES)
+	@$(MESON_HELPER) editable sync --project-root "$(CURDIR)" --source-path "$(CURDIR)/src" --pth-file "$(DEVELOP_PATH_FILE)" --remove-path "$(EDITABLE_PTH_FILE)" --remove-path "$(EDITABLE_LOADER_FILE)"
 	@echo "Completed building and installing: $@"
 	@echo ""
 	@echo "Done."
@@ -120,7 +122,8 @@ undevelop:
 	@echo "Uninstalling $(PKG_NAME) development distributable: $@"
 	@echo ""
 
-	@pip uninstall $(PKG_NAME) -y
+	@pip uninstall $(PKG_NAME) -y || true
+	@$(MESON_HELPER) editable clean --project-root "$(CURDIR)" --pth-file "$(DEVELOP_PATH_FILE)" --remove-path "$(EDITABLE_PTH_FILE)" --remove-path "$(EDITABLE_LOADER_FILE)"
 
 	@echo "Completed uninstalling: $@"
 	@echo ""
