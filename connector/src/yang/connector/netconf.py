@@ -16,20 +16,21 @@ from ncclient.operations.retrieve import GetReply
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
 
+# create a logger for this module
+logger = logging.getLogger(__name__)
+
 try:
     from pyats.connections import BaseConnection
     from pyats.utils.secret_strings import to_plaintext
     from pyats.log.utils import banner
     from pyats.log import TaskLogFormatter
-except ImportError:
+except ImportError as e:
+    logger.warning(f'Unable to import pyATS packages: {e}')
     class BaseConnection:
         pass
 
 from .settings import Settings
 
-
-# create a logger for this module
-logger = logging.getLogger(__name__)
 
 nccl = logging.getLogger("ncclient")
 # The 'Sending' messages are logged at level INFO.
