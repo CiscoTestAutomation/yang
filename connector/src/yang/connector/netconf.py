@@ -3,6 +3,7 @@
 import re
 import time
 import atexit
+import copy
 import logging
 import subprocess
 import datetime
@@ -128,7 +129,7 @@ class pyATS_TaskLog_Adapter(logging.StreamHandler):
 
 
 class NetconfLogForwardingHandler(logging.Handler):
-    """Forward log records from helper loggers to the connection logger."""
+    """Forward helper log records to the connection log file."""
 
     def __init__(self, log):
         super().__init__()
@@ -140,11 +141,14 @@ class NetconfLogForwardingHandler(logging.Handler):
         if not self.log.isEnabledFor(record.levelno):
             return
 
-        record._yang_connector_forwarded = True
-        try:
-            self.log.handle(record)
-        finally:
-            del record._yang_connector_forwarded
+        forwarded_record = copy.copy(record)
+        forwarded_record._yang_connector_forwarded = True
+        for handler in self.log.handlers:
+            if not isinstance(handler, logging.FileHandler):
+                continue
+            if record.levelno < handler.level:
+                continue
+            handler.handle(forwarded_record)
 
 
 class NetconfSessionLogHandler(logging.Handler):
@@ -394,7 +398,9 @@ class Netconf(manager.Manager, BaseConnection):
             pass
         else:
             # we're in pyATS, use pyATS loggers
-            if not self.no_pyats_tasklog:
+            tasklog = getattr(managed_handlers, 'tasklog', None)
+            tasklog_stream = getattr(tasklog, 'stream', None)
+            if not self.no_pyats_tasklog and tasklog_stream is not None:
                 pta = pyATS_TaskLog_Adapter()
                 nsf = NetconfScreenFormatter(fmt=TaskLogFormatter.MESSAGE_FORMAT)
                 nsf.MAX_LINES = self.settings.get('NETCONF_SCREEN_LOGGING_MAX_LINES', 40)
