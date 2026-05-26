@@ -177,7 +177,7 @@ setup(
     # package dependencies
     install_requires =  [
         'paramiko >= 3.5.1',
-        'lxml >= 4.9.4, <5.4.0',
+        'lxml >= 4.9.4, <6.0.4',
         'ncclient >= 0.6.19',
         'grpcio >= 1.71.0',
         'grpcio-tools >= 1.71.0',
