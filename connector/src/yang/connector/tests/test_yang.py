@@ -35,6 +35,10 @@ class MySSHSession():
     def connected(self):
         return self._connected
 
+    @property
+    def id(self):
+        return None
+
     def connect(self, **kwargs):
         self.connect_kwargs = kwargs
         self._connected = True
@@ -65,6 +69,10 @@ class MySSHSession2():
     @property
     def connected(self):
         return self._connected
+
+    @property
+    def id(self):
+        return None
 
     def connect(self, **kwargs):
         self.connect_kwargs = kwargs
@@ -226,6 +234,8 @@ class TestYang(unittest.TestCase):
             device.connections.netconf.sshtunnel)
         device.connections.netconf.sshtunnel.tunnel_ip = '127.0.0.1'
         logfile = tempfile.mktemp(suffix='.log')
+        tunnel_logger = logging.getLogger('unicon.sshutils')
+        original_tunnel_level = tunnel_logger.level
 
         nc_device = yang.connector.Netconf(device=device,
                                            alias='nc',
@@ -242,6 +252,7 @@ class TestYang(unittest.TestCase):
             return 123
 
         try:
+            tunnel_logger.setLevel(logging.WARNING)
             with patch('unicon.sshutils.sshtunnel.auto_tunnel_add',
                        side_effect=add_tunnel):
                 nc_device.connect()
@@ -254,12 +265,18 @@ class TestYang(unittest.TestCase):
             self.assertEqual(nc_device.session.connect_kwargs['host'],
                              '127.0.0.1')
             self.assertEqual(nc_device.session.connect_kwargs['port'], 123)
+            self.assertEqual(tunnel_logger.level, logging.WARNING)
         finally:
+            tunnel_logger.setLevel(original_tunnel_level)
             if os.path.exists(logfile):
                 os.remove(logfile)
 
     def test_ncclient_session_logging(self):
         logfile = tempfile.mktemp(suffix='.log')
+        ncclient_logger = logging.getLogger('ncclient')
+        ncclient_ssh_logger = logging.getLogger('ncclient.transport.ssh')
+        original_ncclient_level = ncclient_logger.level
+        original_ncclient_ssh_level = ncclient_ssh_logger.level
         nc_device = yang.connector.Netconf(device=self.device,
                                            alias='nc',
                                            via='netconf',
@@ -269,8 +286,10 @@ class TestYang(unittest.TestCase):
         nc_device._session = MySSHSession()
 
         try:
+            ncclient_logger.setLevel(logging.WARNING)
+            ncclient_ssh_logger.setLevel(logging.NOTSET)
             nc_device.connect()
-            logging.getLogger('ncclient.transport.ssh').info(
+            nc_device.session.logger.info(
                 'Sending:\n%s', b'<hello/>',
                 extra={'session': nc_device.session})
 
@@ -279,7 +298,42 @@ class TestYang(unittest.TestCase):
 
             self.assertIn('Sending:', log_content)
             self.assertIn('<hello/>', log_content)
+            self.assertEqual(ncclient_logger.level, logging.WARNING)
+            self.assertEqual(ncclient_ssh_logger.level, logging.NOTSET)
         finally:
+            ncclient_logger.setLevel(original_ncclient_level)
+            ncclient_ssh_logger.setLevel(original_ncclient_ssh_level)
+            if os.path.exists(logfile):
+                os.remove(logfile)
+
+    def test_ncclient_debug_session_logging(self):
+        logfile = tempfile.mktemp(suffix='.log')
+        ncclient_logger = logging.getLogger('ncclient')
+        original_ncclient_level = ncclient_logger.level
+        nc_device = yang.connector.Netconf(device=self.device,
+                                           alias='nc',
+                                           via='netconf',
+                                           logfile=logfile,
+                                           log_stdout=False,
+                                           no_pyats_tasklog=True,
+                                           debug=True)
+        nc_device._session = MySSHSession()
+
+        try:
+            ncclient_logger.setLevel(logging.WARNING)
+            nc_device.connect()
+            nc_device.session.logger.debug(
+                'Received:\n%s', b'<rpc-reply/>',
+                extra={'session': nc_device.session})
+
+            with open(logfile) as log_file:
+                log_content = log_file.read()
+
+            self.assertIn('Received:', log_content)
+            self.assertIn('<rpc-reply/>', log_content)
+            self.assertEqual(ncclient_logger.level, logging.WARNING)
+        finally:
+            ncclient_logger.setLevel(original_ncclient_level)
             if os.path.exists(logfile):
                 os.remove(logfile)
 

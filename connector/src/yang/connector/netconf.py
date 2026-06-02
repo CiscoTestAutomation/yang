@@ -13,6 +13,7 @@ from threading import Thread, Event
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
+from ncclient.logging_ import SessionLoggerAdapter
 from ncclient.operations.retrieve import GetReply
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
@@ -183,7 +184,40 @@ class NetconfSessionLogHandler(logging.Handler):
             NetconfLogForwardingHandler(log).emit(record)
 
 
-nccl.addHandler(NetconfSessionLogHandler())
+class NetconfSessionLoggerAdapter(SessionLoggerAdapter):
+    """Session logger adapter that forwards records to the connection log."""
+
+    def __init__(self, logger, extra, log):
+        super().__init__(logger, extra)
+        self.netconf_log = log
+
+    def log(self, level, msg, *args, **kwargs):
+        if not self.logger.isEnabledFor(level):
+            self.forward(level, msg, args, kwargs)
+        return super().log(level, msg, *args, **kwargs)
+
+    def forward(self, level, msg, args, kwargs):
+        if not self.netconf_log.isEnabledFor(level):
+            return
+
+        kwargs = kwargs.copy()
+        if 'extra' in kwargs:
+            kwargs['extra'] = kwargs['extra'].copy()
+        msg, kwargs = self.process(msg, kwargs)
+
+        extra = kwargs.pop('extra', None)
+        exc_info = kwargs.pop('exc_info', None)
+        stack_info = kwargs.pop('stack_info', None)
+        kwargs.pop('stacklevel', None)
+
+        record = self.logger.makeRecord(
+            self.logger.name, level, __file__, 0, msg, args, exc_info,
+            extra=extra, sinfo=stack_info)
+        ncclient_session_log_handler.emit(record)
+
+
+ncclient_session_log_handler = NetconfSessionLogHandler()
+nccl.addHandler(ncclient_session_log_handler)
 
 
 class Netconf(manager.Manager, BaseConnection):
@@ -411,12 +445,21 @@ class Netconf(manager.Manager, BaseConnection):
         # if debug_mode is True, enable debug mode
         if self.debug:
             self.log.setLevel(logging.DEBUG)
-            nccl.setLevel(logging.DEBUG)
-        else:
-            nccl.setLevel(logging.INFO)
 
     def configure_session_logging(self):
         self.session._yang_connector_log = self.log
+        session_logger = getattr(self.session, 'logger', None)
+        if isinstance(session_logger, NetconfSessionLoggerAdapter):
+            session_logger.netconf_log = self.log
+            return
+
+        logger = getattr(session_logger, 'logger',
+                         logging.getLogger('ncclient.transport.ssh'))
+        extra = getattr(session_logger, 'extra', {})
+        extra = extra.copy()
+        extra['session'] = self.session
+        self.session.logger = NetconfSessionLoggerAdapter(
+            logger, extra, self.log)
 
     def connect(self):
         '''connect
@@ -575,7 +618,10 @@ class Netconf(manager.Manager, BaseConnection):
             from unicon.sshutils import sshtunnel
             tunnel_logger = logging.getLogger('unicon.sshutils')
             tunnel_log_handler = NetconfLogForwardingHandler(self.log)
+            tunnel_logger_level = tunnel_logger.level
             tunnel_logger.addHandler(tunnel_log_handler)
+            if tunnel_logger.getEffectiveLevel() > logging.INFO:
+                tunnel_logger.setLevel(logging.INFO)
             try:
                 tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
                 if tunnel_port:
@@ -588,6 +634,7 @@ class Netconf(manager.Manager, BaseConnection):
                                      % (self.via, err))
             finally:
                 tunnel_logger.removeHandler(tunnel_log_handler)
+                tunnel_logger.setLevel(tunnel_logger_level)
             del defaults['sshtunnel']
 
         defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
