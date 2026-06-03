@@ -3,6 +3,7 @@
 import re
 import time
 import atexit
+import copy
 import logging
 import subprocess
 import datetime
@@ -12,6 +13,7 @@ from threading import Thread, Event
 from ncclient import manager
 from ncclient import operations
 from ncclient import transport
+from ncclient.logging_ import SessionLoggerAdapter
 from ncclient.operations.retrieve import GetReply
 from ncclient.devices.default import DefaultDeviceHandler
 from ncclient.operations.errors import TimeoutExpiredError
@@ -127,6 +129,29 @@ class pyATS_TaskLog_Adapter(logging.StreamHandler):
         return self._pyats_handlers.tasklog.stream
 
 
+class NetconfLogForwardingHandler(logging.Handler):
+    """Forward helper log records to the connection log file."""
+
+    def __init__(self, log):
+        super().__init__()
+        self.log = log
+
+    def emit(self, record):
+        if getattr(record, '_yang_connector_forwarded', False):
+            return
+        if not self.log.isEnabledFor(record.levelno):
+            return
+
+        forwarded_record = copy.copy(record)
+        forwarded_record._yang_connector_forwarded = True
+        for handler in self.log.handlers:
+            if not isinstance(handler, logging.FileHandler):
+                continue
+            if record.levelno < handler.level:
+                continue
+            handler.handle(forwarded_record)
+
+
 class NetconfSessionLogHandler(logging.Handler):
     """Logging handler that pretty prints ncclient XML."""
 
@@ -153,8 +178,46 @@ class NetconfSessionLogHandler(logging.Handler):
                 # Unable to handle record so leave it unchanged
                 pass
 
+        session = getattr(record, 'session', None)
+        log = getattr(session, '_yang_connector_log', None)
+        if log:
+            NetconfLogForwardingHandler(log).emit(record)
 
-nccl.addHandler(NetconfSessionLogHandler())
+
+class NetconfSessionLoggerAdapter(SessionLoggerAdapter):
+    """Session logger adapter that forwards records to the connection log."""
+
+    def __init__(self, logger, extra, log):
+        super().__init__(logger, extra)
+        self.netconf_log = log
+
+    def log(self, level, msg, *args, **kwargs):
+        if not self.logger.isEnabledFor(level):
+            self.forward(level, msg, args, kwargs)
+        return super().log(level, msg, *args, **kwargs)
+
+    def forward(self, level, msg, args, kwargs):
+        if not self.netconf_log.isEnabledFor(level):
+            return
+
+        kwargs = kwargs.copy()
+        if 'extra' in kwargs:
+            kwargs['extra'] = kwargs['extra'].copy()
+        msg, kwargs = self.process(msg, kwargs)
+
+        extra = kwargs.pop('extra', None)
+        exc_info = kwargs.pop('exc_info', None)
+        stack_info = kwargs.pop('stack_info', None)
+        kwargs.pop('stacklevel', None)
+
+        record = self.logger.makeRecord(
+            self.logger.name, level, __file__, 0, msg, args, exc_info,
+            extra=extra, sinfo=stack_info)
+        ncclient_session_log_handler.emit(record)
+
+
+ncclient_session_log_handler = NetconfSessionLogHandler()
+nccl.addHandler(ncclient_session_log_handler)
 
 
 class Netconf(manager.Manager, BaseConnection):
@@ -317,7 +380,9 @@ class Netconf(manager.Manager, BaseConnection):
         self.log = logging.getLogger('netconf.%s' % logger_name)
 
         # workaround for double invocation that somehow happens in robot
-        self.log.handlers.clear()
+        for handler in self.log.handlers[:]:
+            self.log.removeHandler(handler)
+            handler.close()
         self.log.filters.clear()
 
         # default log level
@@ -367,7 +432,9 @@ class Netconf(manager.Manager, BaseConnection):
             pass
         else:
             # we're in pyATS, use pyATS loggers
-            if not self.no_pyats_tasklog:
+            tasklog = getattr(managed_handlers, 'tasklog', None)
+            tasklog_stream = getattr(tasklog, 'stream', None)
+            if not self.no_pyats_tasklog and tasklog_stream is not None:
                 pta = pyATS_TaskLog_Adapter()
                 nsf = NetconfScreenFormatter(fmt=TaskLogFormatter.MESSAGE_FORMAT)
                 nsf.MAX_LINES = self.settings.get('NETCONF_SCREEN_LOGGING_MAX_LINES', 40)
@@ -378,6 +445,21 @@ class Netconf(manager.Manager, BaseConnection):
         # if debug_mode is True, enable debug mode
         if self.debug:
             self.log.setLevel(logging.DEBUG)
+
+    def configure_session_logging(self):
+        self.session._yang_connector_log = self.log
+        session_logger = getattr(self.session, 'logger', None)
+        if isinstance(session_logger, NetconfSessionLoggerAdapter):
+            session_logger.netconf_log = self.log
+            return
+
+        logger = getattr(session_logger, 'logger',
+                         logging.getLogger('ncclient.transport.ssh'))
+        extra = getattr(session_logger, 'extra', {})
+        extra = extra.copy()
+        extra['session'] = self.session
+        self.session.logger = NetconfSessionLoggerAdapter(
+            logger, extra, self.log)
 
     def connect(self):
         '''connect
@@ -489,6 +571,7 @@ class Netconf(manager.Manager, BaseConnection):
 
         if not self.session.is_alive():
             self._session = transport.SSHSession(self._device_handler)
+        self.configure_session_logging()
 
         # default values
         defaults = {
@@ -533,6 +616,12 @@ class Netconf(manager.Manager, BaseConnection):
         # support sshtunnel
         if 'sshtunnel' in defaults:
             from unicon.sshutils import sshtunnel
+            tunnel_logger = logging.getLogger('unicon.sshutils')
+            tunnel_log_handler = NetconfLogForwardingHandler(self.log)
+            tunnel_logger_level = tunnel_logger.level
+            tunnel_logger.addHandler(tunnel_log_handler)
+            if tunnel_logger.getEffectiveLevel() > logging.INFO:
+                tunnel_logger.setLevel(logging.INFO)
             try:
                 tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
                 if tunnel_port:
@@ -543,6 +632,9 @@ class Netconf(manager.Manager, BaseConnection):
                 raise AttributeError("Cannot add ssh tunnel. \
                 Connection %s may not have ip/host or port.\n%s"
                                      % (self.via, err))
+            finally:
+                tunnel_logger.removeHandler(tunnel_log_handler)
+                tunnel_logger.setLevel(tunnel_logger_level)
             del defaults['sshtunnel']
 
         defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
