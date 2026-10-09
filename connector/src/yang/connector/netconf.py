@@ -349,6 +349,10 @@ class Netconf(manager.Manager, BaseConnection):
             timeout=self.timeout)
 
         self.active_notifications = {}
+        self._tunnel_owned = False
+        self._tunnel_port = None
+        self._tunnel_proxy_host = None
+        self._tunnel_type = None
 
     @property
     def session(self):
@@ -460,6 +464,54 @@ class Netconf(manager.Manager, BaseConnection):
         extra['session'] = self.session
         self.session.logger = NetconfSessionLoggerAdapter(
             logger, extra, self.log)
+
+    def _connection_block(self):
+        """Return the pyATS connection profile used by this connector."""
+        connections = getattr(self.device, 'connections', {})
+        try:
+            return connections[self.via]
+        except (KeyError, TypeError):
+            return {}
+
+    def _tunnel_config(self):
+        """Return this connection's Unicon SSH-tunnel configuration."""
+        connection = self._connection_block()
+        return connection.get('sshtunnel') or {} if hasattr(connection, 'get') else {}
+
+    def _default_tunnel_config(self):
+        connections = getattr(self.device, 'connections', {})
+        defaults = connections.get('defaults', {}) if hasattr(connections, 'get') else {}
+        return defaults.get('sshtunnel') or {} if hasattr(defaults, 'get') else {}
+
+    def _cleanup_owned_tunnel(self):
+        """Remove only a tunnel created by this NETCONF connection."""
+        if not self._tunnel_owned:
+            return
+
+        from unicon.sshutils import sshtunnel
+
+        tunnel_config = self._tunnel_config()
+        proxy_host = (self._tunnel_proxy_host
+                      or tunnel_config.get('host')
+                      or self._default_tunnel_config().get('host'))
+        proxy_connection = sshtunnel.proxy_connections.get(proxy_host)
+        if proxy_connection is None:
+            raise RuntimeError(
+                "Cannot remove NETCONF SSH tunnel: proxy {!r} is not connected".format(
+                    proxy_host)
+            )
+
+        sshtunnel.remove_tunnel(
+            proxy_conn=proxy_connection,
+            tunnel_type=self._tunnel_type or tunnel_config.get('tunnel_type', 'local'),
+            tunnel_port=self._tunnel_port or tunnel_config.get('tunnel_port'),
+        )
+        if hasattr(tunnel_config, '__setitem__'):
+            tunnel_config['connected'] = False
+        self._tunnel_owned = False
+        self._tunnel_port = None
+        self._tunnel_proxy_host = None
+        self._tunnel_type = None
 
     def connect(self):
         '''connect
@@ -589,7 +641,8 @@ class Netconf(manager.Manager, BaseConnection):
 
         # remove items
         disregards = ['class', 'model', 'protocol',
-                      'async_mode', 'raise_mode', 'credentials']
+                      'async_mode', 'raise_mode', 'credentials',
+                      'tunnel_target', 'qemu_usernet']
         defaults = {k: v for k, v in defaults.items() if k not in disregards}
 
         # rename ip -> host, cast to str type
@@ -613,7 +666,13 @@ class Netconf(manager.Manager, BaseConnection):
             except Exception:
                 pass
 
-        # support sshtunnel
+        # Preserve the API-selected remote endpoint before replacing it with
+        # the local end of an optional SSH tunnel.
+        effective_port = getattr(self, 'port', defaults.get('port', 830))
+
+        # Support an optional SSH tunnel. `effective_port` is the remote
+        # service/forward port; ncclient receives only the local tunnel port.
+        tunnel_endpoint = None
         if 'sshtunnel' in defaults:
             from unicon.sshutils import sshtunnel
             tunnel_logger = logging.getLogger('unicon.sshutils')
@@ -623,11 +682,29 @@ class Netconf(manager.Manager, BaseConnection):
             if tunnel_logger.getEffectiveLevel() > logging.INFO:
                 tunnel_logger.setLevel(logging.INFO)
             try:
-                tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
+                tunnel_config = self._tunnel_config()
+                was_connected = bool(tunnel_config.get('connected', False))
+                tunnel_target = self.connection_info.get('tunnel_target') or {}
+                target_address = (tunnel_target.get('address')
+                                  if hasattr(tunnel_target, 'get') else None)
+                tunnel_port = sshtunnel.auto_tunnel_add(
+                    self.device,
+                    self.via,
+                    target_address=target_address,
+                    target_port=effective_port,
+                )
                 if tunnel_port:
-                    defaults['host'] = self.device.connections[self.via] \
-                                           .sshtunnel.tunnel_ip
+                    if not was_connected:
+                        self._tunnel_owned = True
+                        self._tunnel_port = tunnel_port
+                        self._tunnel_proxy_host = (
+                            tunnel_config.get('host')
+                            or self._default_tunnel_config().get('host')
+                        )
+                        self._tunnel_type = tunnel_config.get('tunnel_type', 'local')
+                    defaults['host'] = tunnel_config.get('tunnel_ip')
                     defaults['port'] = tunnel_port
+                    tunnel_endpoint = (defaults['host'], tunnel_port)
             except AttributeError as err:
                 raise AttributeError("Cannot add ssh tunnel. \
                 Connection %s may not have ip/host or port.\n%s"
@@ -638,6 +715,10 @@ class Netconf(manager.Manager, BaseConnection):
             del defaults['sshtunnel']
 
         defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
+        if tunnel_endpoint:
+            # Runtime connection attributes contain the remote effective port;
+            # keep the local endpoint returned by Unicon for ncclient.
+            defaults['host'], defaults['port'] = tunnel_endpoint
 
         try:
             self.session.connect(**defaults)
@@ -645,6 +726,10 @@ class Netconf(manager.Manager, BaseConnection):
         except Exception:
             if self.session.transport:
                 self.session.close()
+            try:
+                self._cleanup_owned_tunnel()
+            except Exception:
+                self.log.exception('Failed to roll back NETCONF SSH tunnel')
             raise
 
         @atexit.register
@@ -658,7 +743,15 @@ class Netconf(manager.Manager, BaseConnection):
         High-level api: closes the NetConf connection.
         '''
 
-        self.session.close()
+        try:
+            self.session.close()
+        except Exception:
+            try:
+                self._cleanup_owned_tunnel()
+            except Exception:
+                self.log.exception('Failed to remove NETCONF SSH tunnel after disconnect error')
+            raise
+        self._cleanup_owned_tunnel()
 
     def subscribe(self, request):
         """ Creates a notification listener and mark it as active """
