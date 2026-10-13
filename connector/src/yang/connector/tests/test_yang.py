@@ -251,23 +251,36 @@ class TestYang(unittest.TestCase):
                 device.name, via, '127.0.0.1', 123)
             return 123
 
+        from unicon.sshutils import sshtunnel
+        proxy_connection = Mock()
         try:
             tunnel_logger.setLevel(logging.WARNING)
             with patch('unicon.sshutils.sshtunnel.auto_tunnel_add',
-                       side_effect=add_tunnel) as tunnel_add:
+                       side_effect=add_tunnel) as tunnel_add, \
+                 patch.object(sshtunnel, 'proxy_connections',
+                              {'proxy': proxy_connection}), \
+                 patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel:
                 nc_device.connect()
-            tunnel_add.assert_called_once_with(
-                device, 'netconf', target_address=None, target_port=830)
+                tunnel_add.assert_called_once_with(
+                    device, 'netconf', target_address=None, target_port=830)
 
-            with open(logfile) as log_file:
-                log_content = log_file.read()
+                with open(logfile) as log_file:
+                    log_content = log_file.read()
 
-            self.assertIn('via new SSH tunnel', log_content)
-            self.assertIn('NETCONF CONNECTED', log_content)
-            self.assertEqual(nc_device.session.connect_kwargs['host'],
-                             '127.0.0.1')
-            self.assertEqual(nc_device.session.connect_kwargs['port'], 123)
-            self.assertEqual(tunnel_logger.level, logging.WARNING)
+                self.assertIn('via new SSH tunnel', log_content)
+                self.assertIn('NETCONF CONNECTED', log_content)
+                self.assertEqual(nc_device.session.connect_kwargs['host'],
+                                 '127.0.0.1')
+                self.assertEqual(nc_device.session.connect_kwargs['port'], 123)
+                self.assertEqual(tunnel_logger.level, logging.WARNING)
+                nc_device.disconnect()
+
+                remove_tunnel.assert_called_once_with(
+                    proxy_conn=proxy_connection,
+                    tunnel_type='local',
+                    tunnel_port=123,
+                    tunnel_ip='127.0.0.1',
+                )
         finally:
             tunnel_logger.setLevel(original_tunnel_level)
             if os.path.exists(logfile):
@@ -347,6 +360,7 @@ class TestYang(unittest.TestCase):
                 proxy_conn=proxy_connection,
                 tunnel_type='local',
                 tunnel_port=44001,
+                tunnel_ip='127.0.0.1',
             )
             self.assertFalse(nc_device._tunnel_owned)
             self.assertFalse(device.connections.netconf.sshtunnel.connected)
@@ -371,6 +385,32 @@ class TestYang(unittest.TestCase):
             proxy_conn=proxy_connection,
             tunnel_type='local',
             tunnel_port=44001,
+            tunnel_ip='127.0.0.1',
+        )
+        self.assertFalse(nc_device._tunnel_owned)
+
+    def test_atexit_cleanup_removes_owned_tunnel(self):
+        from unicon.sshutils import sshtunnel
+
+        device = self._load_dynamic_netconf_device()
+        nc_device = yang.connector.Netconf(
+            device=device, alias='dynamic', via='netconf', port=43613)
+        nc_device._session = MySSHSession()
+        proxy_connection = Mock()
+
+        with patch('atexit.register') as register, \
+             patch.object(sshtunnel, 'proxy_connections', {'proxy': proxy_connection}), \
+             patch.object(sshtunnel, 'auto_tunnel_add', return_value=44001), \
+             patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel:
+            nc_device.connect()
+            cleanup = register.call_args.args[0]
+            cleanup()
+
+        remove_tunnel.assert_called_once_with(
+            proxy_conn=proxy_connection,
+            tunnel_type='local',
+            tunnel_port=44001,
+            tunnel_ip='127.0.0.1',
         )
         self.assertFalse(nc_device._tunnel_owned)
 

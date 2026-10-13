@@ -353,6 +353,7 @@ class Netconf(manager.Manager, BaseConnection):
         self._tunnel_port = None
         self._tunnel_proxy_host = None
         self._tunnel_type = None
+        self._tunnel_bind_ip = None
 
     @property
     def session(self):
@@ -505,6 +506,7 @@ class Netconf(manager.Manager, BaseConnection):
             proxy_conn=proxy_connection,
             tunnel_type=self._tunnel_type or tunnel_config.get('tunnel_type', 'local'),
             tunnel_port=self._tunnel_port or tunnel_config.get('tunnel_port'),
+            tunnel_ip=self._tunnel_bind_ip,
         )
         if hasattr(tunnel_config, '__setitem__'):
             tunnel_config['connected'] = False
@@ -512,6 +514,7 @@ class Netconf(manager.Manager, BaseConnection):
         self._tunnel_port = None
         self._tunnel_proxy_host = None
         self._tunnel_type = None
+        self._tunnel_bind_ip = None
 
     def connect(self):
         '''connect
@@ -693,6 +696,7 @@ class Netconf(manager.Manager, BaseConnection):
                     target_address=target_address,
                     target_port=effective_port,
                 )
+                tunnel_config = self._tunnel_config()
                 if tunnel_port:
                     if not was_connected:
                         self._tunnel_owned = True
@@ -702,6 +706,8 @@ class Netconf(manager.Manager, BaseConnection):
                             or self._default_tunnel_config().get('host')
                         )
                         self._tunnel_type = tunnel_config.get('tunnel_type', 'local')
+                        self._tunnel_bind_ip = tunnel_config.get(
+                            'tunnel_bind_ip', tunnel_config.get('tunnel_ip'))
                     defaults['host'] = tunnel_config.get('tunnel_ip')
                     defaults['port'] = tunnel_port
                     tunnel_endpoint = (defaults['host'], tunnel_port)
@@ -734,8 +740,15 @@ class Netconf(manager.Manager, BaseConnection):
 
         @atexit.register
         def cleanup():
-            if self.session.transport:
-                self.session.close()
+            try:
+                if self.session.transport:
+                    self.session.close()
+            except Exception:
+                self.log.exception('Failed to close NETCONF session at exit')
+            try:
+                self._cleanup_owned_tunnel()
+            except Exception:
+                self.log.exception('Failed to remove NETCONF SSH tunnel at exit')
 
     def disconnect(self):
         '''disconnect
