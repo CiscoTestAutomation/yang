@@ -3,4 +3,4 @@ New
 --------------------------------------------------------------------------------
 * NETCONF Connector
     * Modified Netconf:
-        * Use runtime effective ports for SSH tunnel targets and clean up owned tunnels
+        * Validate SSH tunnel targets against the runtime endpoint, replace stale tunnels, and clean up tunnels created by the connector
