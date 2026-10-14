@@ -513,7 +513,12 @@ class Netconf(manager.Manager, BaseConnection):
         )
         tunnel_port = tunnel_config.get('tunnel_port')
         tunnel_type = tunnel_config.get('tunnel_type', 'local')
-        tunnel_ip = tunnel_config.get('tunnel_ip', '127.0.0.1')
+        if 'tunnel_bind_ip' in tunnel_config:
+            tunnel_bind_ip = tunnel_config.get('tunnel_bind_ip')
+        else:
+            tunnel_bind_ip = tunnel_config.get('tunnel_ip')
+        tunnel_ip = ('127.0.0.1' if tunnel_bind_ip is None
+                     else tunnel_bind_ip)
 
         if tunnel_config.get('connected') and target_matches and tunnel_port:
             return tunnel_ip, tunnel_port
@@ -538,6 +543,7 @@ class Netconf(manager.Manager, BaseConnection):
                 proxy_conn=proxy_connection,
                 tunnel_type=tunnel_type,
                 tunnel_port=tunnel_port,
+                tunnel_ip=tunnel_bind_ip,
             )
             tunnel_config['connected'] = False
 
@@ -548,10 +554,12 @@ class Netconf(manager.Manager, BaseConnection):
             tunnel_protocol=tunnel_config.get('tunnel_protocol', 'tcp'),
             target_address=target_address,
             target_port=target_port,
+            tunnel_ip=tunnel_bind_ip,
         )
         tunnel_config.update({
             'connected': True,
             'tunnel_ip': tunnel_ip,
+            'tunnel_bind_ip': tunnel_bind_ip,
             'tunnel_port': tunnel_port,
             'tunnel_type': tunnel_type,
             'target_address': target_address,
@@ -581,10 +589,16 @@ class Netconf(manager.Manager, BaseConnection):
                     proxy_host)
             )
 
+        tunnel_bind_ip = (
+            tunnel_config.get('tunnel_bind_ip')
+            if 'tunnel_bind_ip' in tunnel_config
+            else tunnel_config.get('tunnel_ip')
+        )
         sshtunnel.remove_tunnel(
             proxy_conn=proxy_connection,
             tunnel_type=self._tunnel_type or tunnel_config.get('tunnel_type', 'local'),
             tunnel_port=self._tunnel_port or tunnel_config.get('tunnel_port'),
+            tunnel_ip=tunnel_bind_ip,
         )
         if hasattr(tunnel_config, '__setitem__'):
             tunnel_config['connected'] = False

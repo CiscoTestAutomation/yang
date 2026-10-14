@@ -280,6 +280,7 @@ class TestYang(unittest.TestCase):
                     proxy_conn=proxy_connection,
                     tunnel_type='local',
                     tunnel_port=123,
+                    tunnel_ip='127.0.0.1',
                 )
         finally:
             tunnel_logger.setLevel(original_tunnel_level)
@@ -362,6 +363,7 @@ class TestYang(unittest.TestCase):
                 proxy_conn=proxy_connection,
                 tunnel_type='local',
                 tunnel_port=44001,
+                tunnel_ip='127.0.0.1',
             )
             self.assertFalse(nc_device._tunnel_owned)
             self.assertFalse(device.connections.netconf.sshtunnel.connected)
@@ -387,6 +389,7 @@ class TestYang(unittest.TestCase):
             proxy_conn=proxy_connection,
             tunnel_type='local',
             tunnel_port=44001,
+            tunnel_ip='127.0.0.1',
         )
         self.assertFalse(nc_device._tunnel_owned)
 
@@ -412,6 +415,7 @@ class TestYang(unittest.TestCase):
             proxy_conn=proxy_connection,
             tunnel_type='local',
             tunnel_port=44001,
+            tunnel_ip='127.0.0.1',
         )
         self.assertFalse(nc_device._tunnel_owned)
 
@@ -445,6 +449,8 @@ class TestYang(unittest.TestCase):
         tunnel_config.tunnel_port = 44001
         tunnel_config.target_address = '10.0.2.15'
         tunnel_config.target_port = 830
+        tunnel_config.tunnel_bind_ip = '127.0.0.2'
+        tunnel_config.tunnel_ip = '127.0.0.2'
         nc_device = yang.connector.Netconf(
             device=device, alias='dynamic', via='netconf', port=43613)
         nc_device._session = MySSHSession()
@@ -459,11 +465,13 @@ class TestYang(unittest.TestCase):
 
         self.assertEqual(remove_tunnel.call_args_list, [
             call(proxy_conn=proxy_connection, tunnel_type='local',
-                 tunnel_port=44001),
+                 tunnel_port=44001, tunnel_ip='127.0.0.2'),
             call(proxy_conn=proxy_connection, tunnel_type='local',
-                 tunnel_port=44002),
+                 tunnel_port=44002, tunnel_ip='127.0.0.2'),
         ])
         self.assertEqual(add_tunnel.call_args.kwargs['target_port'], 43613)
+        self.assertEqual(add_tunnel.call_args.kwargs['tunnel_ip'], '127.0.0.2')
+        self.assertEqual(nc_device.session.connect_kwargs['host'], '127.0.0.2')
         self.assertEqual(nc_device.session.connect_kwargs['port'], 44002)
         self.assertFalse(nc_device._tunnel_owned)
         self.assertEqual(tunnel_config.target_port, 43613)
