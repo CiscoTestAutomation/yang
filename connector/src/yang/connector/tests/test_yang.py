@@ -11,7 +11,7 @@ from ncclient.devices.default import DefaultDeviceHandler
 from pyats.topology import loader
 from pyats.connections import BaseConnection
 from pyats.datastructures import AttrDict
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 import yang.connector
 
 
@@ -245,31 +245,236 @@ class TestYang(unittest.TestCase):
                                            no_pyats_tasklog=True)
         nc_device._session = MySSHSession()
 
-        def add_tunnel(device, via):
+        def add_tunnel(**kwargs):
             logging.getLogger('unicon.sshutils').info(
-                "Device '%s' connection '%s' via new SSH tunnel %s:%s",
-                device.name, via, '127.0.0.1', 123)
+                'Adding local tunnel 127.0.0.1:%s', 123)
             return 123
 
+        from unicon.sshutils import sshtunnel
+        proxy_connection = Mock()
         try:
             tunnel_logger.setLevel(logging.WARNING)
-            with patch('unicon.sshutils.sshtunnel.auto_tunnel_add',
-                       side_effect=add_tunnel):
+            with patch.object(sshtunnel, 'connect_proxy_host'), \
+                 patch.object(sshtunnel, 'add_tunnel',
+                              side_effect=add_tunnel) as tunnel_add, \
+                 patch.object(sshtunnel, 'proxy_connections',
+                              {'proxy': proxy_connection}), \
+                 patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel:
                 nc_device.connect()
+                self.assertEqual(tunnel_add.call_args.kwargs['target_address'],
+                                 '1.2.3.4')
+                self.assertEqual(tunnel_add.call_args.kwargs['target_port'], 830)
 
-            with open(logfile) as log_file:
-                log_content = log_file.read()
+                with open(logfile) as log_file:
+                    log_content = log_file.read()
 
-            self.assertIn('via new SSH tunnel', log_content)
-            self.assertIn('NETCONF CONNECTED', log_content)
-            self.assertEqual(nc_device.session.connect_kwargs['host'],
-                             '127.0.0.1')
-            self.assertEqual(nc_device.session.connect_kwargs['port'], 123)
-            self.assertEqual(tunnel_logger.level, logging.WARNING)
+                self.assertIn('Adding local tunnel 127.0.0.1:123', log_content)
+                self.assertIn('NETCONF CONNECTED', log_content)
+                self.assertEqual(nc_device.session.connect_kwargs['host'],
+                                 '127.0.0.1')
+                self.assertEqual(nc_device.session.connect_kwargs['port'], 123)
+                self.assertEqual(tunnel_logger.level, logging.WARNING)
+                nc_device.disconnect()
+
+                remove_tunnel.assert_called_once_with(
+                    proxy_conn=proxy_connection,
+                    tunnel_type='local',
+                    tunnel_port=123,
+                    tunnel_ip='127.0.0.1',
+                )
         finally:
             tunnel_logger.setLevel(original_tunnel_level)
             if os.path.exists(logfile):
                 os.remove(logfile)
+
+    def _load_dynamic_netconf_device(self, with_tunnel=True):
+        tunnel_block = (
+            '                sshtunnel:\n'
+            '                    host: proxy\n'
+            '                    tunnel_ip: 127.0.0.1\n'
+            if with_tunnel else ''
+        )
+        yaml = (
+            'devices:\n'
+            '    qemu-uut:\n'
+            '        os: iosxe\n'
+            '        type: qemu\n'
+            '        connections:\n'
+            '            netconf:\n'
+            '                class: yang.connector.Netconf\n'
+            '                protocol: netconf\n'
+            '                ip: 192.0.2.10\n'
+            '                port: 830\n'
+            '                username: admin\n'
+            '                password: admin\n'
+            + tunnel_block +
+            '                tunnel_target:\n'
+            '                    address: 10.0.2.15\n'
+            '                qemu_usernet:\n'
+            '                    qmp_socket_path: /tmp/qmp.sock\n'
+            '                    guest_ip: 10.0.2.15\n'
+            '                    netdev_id: Gi0\n'
+        )
+        device = loader.load(yaml).devices['qemu-uut']
+        if with_tunnel:
+            device.connections.netconf.sshtunnel = AttrDict(
+                device.connections.netconf.sshtunnel)
+        return device
+
+    def test_runtime_port_and_qemu_metadata_without_tunnel(self):
+        device = self._load_dynamic_netconf_device(with_tunnel=False)
+        nc_device = yang.connector.Netconf(
+            device=device, alias='dynamic', via='netconf', port=8830)
+        nc_device._session = MySSHSession()
+
+        nc_device.connect()
+
+        self.assertEqual(nc_device.session.connect_kwargs['port'], 8830)
+        self.assertNotIn('qemu_usernet', nc_device.session.connect_kwargs)
+        self.assertNotIn('tunnel_target', nc_device.session.connect_kwargs)
+
+    def test_runtime_effective_port_is_ssh_tunnel_target_and_owned_tunnel_is_removed(self):
+        from unicon.sshutils import sshtunnel
+
+        device = self._load_dynamic_netconf_device()
+        nc_device = yang.connector.Netconf(
+            device=device, alias='dynamic', via='netconf', port=43613)
+        nc_device._session = MySSHSession()
+        proxy_connection = Mock()
+
+        with patch.object(sshtunnel, 'proxy_connections', {'proxy': proxy_connection}), \
+             patch.object(sshtunnel, 'connect_proxy_host'), \
+             patch.object(sshtunnel, 'add_tunnel', return_value=44001) as add_tunnel, \
+             patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel:
+            nc_device.connect()
+
+            self.assertEqual(add_tunnel.call_args.kwargs['target_address'],
+                             '10.0.2.15')
+            self.assertEqual(add_tunnel.call_args.kwargs['target_port'], 43613)
+            self.assertEqual(nc_device.session.connect_kwargs['host'], '127.0.0.1')
+            self.assertEqual(nc_device.session.connect_kwargs['port'], 44001)
+            self.assertNotIn('qemu_usernet', nc_device.session.connect_kwargs)
+            self.assertNotIn('tunnel_target', nc_device.session.connect_kwargs)
+            self.assertTrue(nc_device._tunnel_owned)
+
+            nc_device.disconnect()
+
+            remove_tunnel.assert_called_once_with(
+                proxy_conn=proxy_connection,
+                tunnel_type='local',
+                tunnel_port=44001,
+                tunnel_ip='127.0.0.1',
+            )
+            self.assertFalse(nc_device._tunnel_owned)
+            self.assertFalse(device.connections.netconf.sshtunnel.connected)
+
+    def test_failed_netconf_session_rolls_back_created_tunnel(self):
+        from unicon.sshutils import sshtunnel
+
+        device = self._load_dynamic_netconf_device()
+        nc_device = yang.connector.Netconf(
+            device=device, alias='dynamic', via='netconf', port=43613)
+        nc_device._session = MySSHSession()
+        nc_device._session.connect = Mock(side_effect=RuntimeError('session failed'))
+        proxy_connection = Mock()
+
+        with patch.object(sshtunnel, 'proxy_connections', {'proxy': proxy_connection}), \
+             patch.object(sshtunnel, 'connect_proxy_host'), \
+             patch.object(sshtunnel, 'add_tunnel', return_value=44001), \
+             patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel:
+            with self.assertRaisesRegex(RuntimeError, 'session failed'):
+                nc_device.connect()
+
+        remove_tunnel.assert_called_once_with(
+            proxy_conn=proxy_connection,
+            tunnel_type='local',
+            tunnel_port=44001,
+            tunnel_ip='127.0.0.1',
+        )
+        self.assertFalse(nc_device._tunnel_owned)
+
+    def test_atexit_cleanup_removes_owned_tunnel(self):
+        from unicon.sshutils import sshtunnel
+
+        device = self._load_dynamic_netconf_device()
+        nc_device = yang.connector.Netconf(
+            device=device, alias='dynamic', via='netconf', port=43613)
+        nc_device._session = MySSHSession()
+        proxy_connection = Mock()
+
+        with patch('atexit.register') as register, \
+             patch.object(sshtunnel, 'proxy_connections', {'proxy': proxy_connection}), \
+             patch.object(sshtunnel, 'connect_proxy_host'), \
+             patch.object(sshtunnel, 'add_tunnel', return_value=44001), \
+             patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel:
+            nc_device.connect()
+            cleanup = register.call_args.args[0]
+            cleanup()
+
+        remove_tunnel.assert_called_once_with(
+            proxy_conn=proxy_connection,
+            tunnel_type='local',
+            tunnel_port=44001,
+            tunnel_ip='127.0.0.1',
+        )
+        self.assertFalse(nc_device._tunnel_owned)
+
+    def test_adopted_tunnel_is_not_removed_by_connector(self):
+        from unicon.sshutils import sshtunnel
+
+        device = self._load_dynamic_netconf_device()
+        device.connections.netconf.sshtunnel.connected = True
+        device.connections.netconf.sshtunnel.tunnel_port = 44001
+        device.connections.netconf.sshtunnel.target_address = '10.0.2.15'
+        device.connections.netconf.sshtunnel.target_port = 43613
+        nc_device = yang.connector.Netconf(
+            device=device, alias='dynamic', via='netconf', port=43613)
+        nc_device._session = MySSHSession()
+
+        with patch.object(sshtunnel, 'add_tunnel') as add_tunnel, \
+             patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel:
+            nc_device.connect()
+            nc_device.disconnect()
+
+        add_tunnel.assert_not_called()
+        remove_tunnel.assert_not_called()
+        self.assertFalse(nc_device._tunnel_owned)
+
+    def test_existing_tunnel_with_different_target_port_is_replaced(self):
+        from unicon.sshutils import sshtunnel
+
+        device = self._load_dynamic_netconf_device()
+        tunnel_config = device.connections.netconf.sshtunnel
+        tunnel_config.connected = True
+        tunnel_config.tunnel_port = 44001
+        tunnel_config.target_address = '10.0.2.15'
+        tunnel_config.target_port = 830
+        tunnel_config.tunnel_bind_ip = '127.0.0.2'
+        tunnel_config.tunnel_ip = '127.0.0.2'
+        nc_device = yang.connector.Netconf(
+            device=device, alias='dynamic', via='netconf', port=43613)
+        nc_device._session = MySSHSession()
+        proxy_connection = Mock()
+
+        with patch.object(sshtunnel, 'proxy_connections', {'proxy': proxy_connection}), \
+             patch.object(sshtunnel, 'connect_proxy_host'), \
+             patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel, \
+             patch.object(sshtunnel, 'add_tunnel', return_value=44002) as add_tunnel:
+            nc_device.connect()
+            nc_device.disconnect()
+
+        self.assertEqual(remove_tunnel.call_args_list, [
+            call(proxy_conn=proxy_connection, tunnel_type='local',
+                 tunnel_port=44001, tunnel_ip='127.0.0.2'),
+            call(proxy_conn=proxy_connection, tunnel_type='local',
+                 tunnel_port=44002, tunnel_ip='127.0.0.2'),
+        ])
+        self.assertEqual(add_tunnel.call_args.kwargs['target_port'], 43613)
+        self.assertEqual(add_tunnel.call_args.kwargs['tunnel_ip'], '127.0.0.2')
+        self.assertEqual(nc_device.session.connect_kwargs['host'], '127.0.0.2')
+        self.assertEqual(nc_device.session.connect_kwargs['port'], 44002)
+        self.assertFalse(nc_device._tunnel_owned)
+        self.assertEqual(tunnel_config.target_port, 43613)
 
     def test_ncclient_session_logging(self):
         logfile = tempfile.mktemp(suffix='.log')
