@@ -308,8 +308,6 @@ class TestYang(unittest.TestCase):
             '                username: admin\n'
             '                password: admin\n'
             + tunnel_block +
-            '                tunnel_target:\n'
-            '                    address: 10.0.2.15\n'
             '                qemu_usernet:\n'
             '                    qmp_socket_path: /tmp/qmp.sock\n'
             '                    guest_ip: 10.0.2.15\n'
@@ -331,7 +329,6 @@ class TestYang(unittest.TestCase):
 
         self.assertEqual(nc_device.session.connect_kwargs['port'], 8830)
         self.assertNotIn('qemu_usernet', nc_device.session.connect_kwargs)
-        self.assertNotIn('tunnel_target', nc_device.session.connect_kwargs)
 
     def test_runtime_effective_port_is_ssh_tunnel_target_and_owned_tunnel_is_removed(self):
         from unicon.sshutils import sshtunnel

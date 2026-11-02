@@ -736,7 +736,7 @@ class Netconf(manager.Manager, BaseConnection):
         # remove items
         disregards = ['class', 'model', 'protocol',
                       'async_mode', 'raise_mode', 'credentials',
-                      'tunnel_target', 'qemu_usernet']
+                      'qemu_usernet']
         defaults = {k: v for k, v in defaults.items() if k not in disregards}
 
         # rename ip -> host, cast to str type
@@ -776,12 +776,15 @@ class Netconf(manager.Manager, BaseConnection):
             if tunnel_logger.getEffectiveLevel() > logging.INFO:
                 tunnel_logger.setLevel(logging.INFO)
             try:
-                tunnel_target = self.connection_info.get('tunnel_target') or {}
                 connection = self._connection_block()
+                qemu_usernet = connection.get('qemu_usernet', {})
                 target_address = (
-                    tunnel_target.get('address')
-                    if hasattr(tunnel_target, 'get') else None
-                ) or connection.get('ip') or connection.get('host')
+                    qemu_usernet.get('guest_ip')
+                    if hasattr(qemu_usernet, 'get') else None
+                )
+                if target_address is None:
+                    target_address = (connection.get('ip')
+                                      or connection.get('host'))
                 if target_address is None:
                     raise AttributeError('NETCONF SSH tunnel target address is not configured')
                 target_address = str(target_address)
