@@ -349,10 +349,7 @@ class Netconf(manager.Manager, BaseConnection):
             timeout=self.timeout)
 
         self.active_notifications = {}
-        self._tunnel_owned = False
-        self._tunnel_port = None
-        self._tunnel_proxy_host = None
-        self._tunnel_type = None
+        self._tunnel_lease = None
 
     @property
     def session(self):
@@ -473,139 +470,15 @@ class Netconf(manager.Manager, BaseConnection):
         except (KeyError, TypeError):
             return {}
 
-    def _tunnel_config(self):
-        """Return this connection's Unicon SSH-tunnel configuration."""
-        connection = self._connection_block()
-        return connection.get('sshtunnel') if hasattr(connection, 'get') else {}
-
-    def _default_tunnel_config(self):
-        connections = getattr(self.device, 'connections', {})
-        defaults = connections.get('defaults', {}) if hasattr(connections, 'get') else {}
-        return defaults.get('sshtunnel') or {} if hasattr(defaults, 'get') else {}
-
-    def _add_netconf_tunnel(self, sshtunnel, target_address, target_port):
-        """Reuse only a tunnel known to forward to this NETCONF endpoint."""
-        sshtunnel.lock.acquire()
-        try:
-            return self._add_netconf_tunnel_locked(
-                sshtunnel, target_address, target_port)
-        finally:
-            sshtunnel.lock.release()
-
-    def _add_netconf_tunnel_locked(self, sshtunnel, target_address, target_port):
-        connection = self._connection_block()
-        tunnel_config = self._tunnel_config()
-        default_tunnel_config = self._default_tunnel_config()
-        if tunnel_config is None:
-            tunnel_config = dict(default_tunnel_config)
-            connection['sshtunnel'] = tunnel_config
-        if hasattr(tunnel_config, 'setdefault'):
-            for key, value in default_tunnel_config.items():
-                tunnel_config.setdefault(key, value)
-        proxy_host = (tunnel_config.get('host')
-                      or default_tunnel_config.get('host'))
-        if not proxy_host:
-            raise RuntimeError('Cannot add NETCONF SSH tunnel: proxy host is not configured')
-
-        target_matches = (
-            tunnel_config.get('target_address') == target_address
-            and str(tunnel_config.get('target_port')) == str(target_port)
-        )
-        tunnel_port = tunnel_config.get('tunnel_port')
-        tunnel_type = tunnel_config.get('tunnel_type', 'local')
-        if 'tunnel_bind_ip' in tunnel_config:
-            tunnel_bind_ip = tunnel_config.get('tunnel_bind_ip')
-        else:
-            tunnel_bind_ip = tunnel_config.get('tunnel_ip')
-        tunnel_ip = ('127.0.0.1' if tunnel_bind_ip is None
-                     else tunnel_bind_ip)
-
-        if tunnel_config.get('connected') and target_matches and tunnel_port:
-            return tunnel_ip, tunnel_port
-
-        # A connected flag alone does not identify the forwarding target.
-        # Recreate unknown or mismatched tunnels so NETCONF cannot silently
-        # reach the previous target.
-        sshtunnel.connect_proxy_host(
-            testbed=self.device.testbed, proxy_host=proxy_host)
-        proxy_connection = sshtunnel.proxy_connections.get(proxy_host)
-        if proxy_connection is None:
-            raise RuntimeError(
-                "Cannot add NETCONF SSH tunnel: proxy {!r} is not connected".format(
-                    proxy_host)
-            )
-
-        if tunnel_config.get('connected'):
-            if not tunnel_port:
-                raise RuntimeError(
-                    'Cannot replace NETCONF SSH tunnel without its local port')
-            sshtunnel.remove_tunnel(
-                proxy_conn=proxy_connection,
-                tunnel_type=tunnel_type,
-                tunnel_port=tunnel_port,
-                tunnel_ip=tunnel_bind_ip,
-            )
-            tunnel_config['connected'] = False
-
-        tunnel_port = sshtunnel.add_tunnel(
-            proxy_conn=proxy_connection,
-            tunnel_port=tunnel_port or 0,
-            tunnel_type=tunnel_type,
-            tunnel_protocol=tunnel_config.get('tunnel_protocol', 'tcp'),
-            target_address=target_address,
-            target_port=target_port,
-            tunnel_ip=tunnel_bind_ip,
-        )
-        tunnel_config.update({
-            'connected': True,
-            'tunnel_ip': tunnel_ip,
-            'tunnel_bind_ip': tunnel_bind_ip,
-            'tunnel_port': tunnel_port,
-            'tunnel_type': tunnel_type,
-            'target_address': target_address,
-            'target_port': target_port,
-        })
-        self._tunnel_owned = True
-        self._tunnel_port = tunnel_port
-        self._tunnel_proxy_host = proxy_host
-        self._tunnel_type = tunnel_type
-        return tunnel_ip, tunnel_port
-
     def _cleanup_owned_tunnel(self):
-        """Remove only a tunnel created by this NETCONF connection."""
-        if not self._tunnel_owned:
+        """Release the SSH forwarding only if this connector created it."""
+        lease = self._tunnel_lease
+        if lease is None:
             return
 
         from unicon.sshutils import sshtunnel
-
-        tunnel_config = self._tunnel_config()
-        proxy_host = (self._tunnel_proxy_host
-                      or tunnel_config.get('host')
-                      or self._default_tunnel_config().get('host'))
-        proxy_connection = sshtunnel.proxy_connections.get(proxy_host)
-        if proxy_connection is None:
-            raise RuntimeError(
-                "Cannot remove NETCONF SSH tunnel: proxy {!r} is not connected".format(
-                    proxy_host)
-            )
-
-        tunnel_bind_ip = (
-            tunnel_config.get('tunnel_bind_ip')
-            if 'tunnel_bind_ip' in tunnel_config
-            else tunnel_config.get('tunnel_ip')
-        )
-        sshtunnel.remove_tunnel(
-            proxy_conn=proxy_connection,
-            tunnel_type=self._tunnel_type or tunnel_config.get('tunnel_type', 'local'),
-            tunnel_port=self._tunnel_port or tunnel_config.get('tunnel_port'),
-            tunnel_ip=tunnel_bind_ip,
-        )
-        if hasattr(tunnel_config, '__setitem__'):
-            tunnel_config['connected'] = False
-        self._tunnel_owned = False
-        self._tunnel_port = None
-        self._tunnel_proxy_host = None
-        self._tunnel_type = None
+        sshtunnel.auto_tunnel_release(self.device, lease)
+        self._tunnel_lease = None
 
     def connect(self):
         '''connect
@@ -765,7 +638,7 @@ class Netconf(manager.Manager, BaseConnection):
         effective_port = getattr(self, 'port', defaults.get('port', 830))
 
         # Support an optional SSH tunnel. `effective_port` is the remote
-        # service/forward port; ncclient receives only the local tunnel port.
+        # endpoint port; ncclient receives the local endpoint from Unicon.
         tunnel_endpoint = None
         if 'sshtunnel' in defaults:
             from unicon.sshutils import sshtunnel
@@ -777,30 +650,30 @@ class Netconf(manager.Manager, BaseConnection):
                 tunnel_logger.setLevel(logging.INFO)
             try:
                 connection = self._connection_block()
-                qemu_usernet = connection.get('qemu_usernet', {})
-                target_address = (
-                    qemu_usernet.get('guest_ip')
-                    if hasattr(qemu_usernet, 'get') else None
-                )
+                target_address = (connection.get('ip')
+                                  or connection.get('host'))
                 if target_address is None:
-                    target_address = (connection.get('ip')
-                                      or connection.get('host'))
-                if target_address is None:
-                    raise AttributeError('NETCONF SSH tunnel target address is not configured')
-                target_address = str(target_address)
-                if ':' in target_address and not target_address.startswith('['):
-                    target_address = '[{}]'.format(target_address)
+                    raise AttributeError(
+                        'NETCONF SSH tunnel target address is not configured'
+                    )
 
-                tunnel_ip, tunnel_port = self._add_netconf_tunnel(
-                    sshtunnel, target_address, effective_port)
-                if tunnel_port:
-                    defaults['host'] = tunnel_ip
-                    defaults['port'] = tunnel_port
-                    tunnel_endpoint = (defaults['host'], tunnel_port)
+                lease = sshtunnel.auto_tunnel_add(
+                    self.device,
+                    self.via,
+                    target_address=str(target_address),
+                    target_port=effective_port,
+                    return_lease=True,
+                )
+                if lease is not None:
+                    self._tunnel_lease = lease
+                    defaults['host'] = lease.bind_address
+                    defaults['port'] = lease.port
+                    tunnel_endpoint = (lease.bind_address, lease.port)
             except AttributeError as err:
-                raise AttributeError("Cannot add ssh tunnel. \
-                Connection %s may not have ip/host or port.\n%s"
-                                     % (self.via, err))
+                raise AttributeError(
+                    'Cannot add ssh tunnel. Connection {} may not have '
+                    'an ip/host or port.\n{}'.format(self.via, err)
+                )
             finally:
                 tunnel_logger.removeHandler(tunnel_log_handler)
                 tunnel_logger.setLevel(tunnel_logger_level)
