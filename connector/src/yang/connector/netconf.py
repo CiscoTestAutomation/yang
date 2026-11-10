@@ -349,7 +349,6 @@ class Netconf(manager.Manager, BaseConnection):
             timeout=self.timeout)
 
         self.active_notifications = {}
-        self._tunnel_lease = None
 
     @property
     def session(self):
@@ -461,24 +460,6 @@ class Netconf(manager.Manager, BaseConnection):
         extra['session'] = self.session
         self.session.logger = NetconfSessionLoggerAdapter(
             logger, extra, self.log)
-
-    def _connection_block(self):
-        """Return the pyATS connection profile used by this connector."""
-        connections = getattr(self.device, 'connections', {})
-        try:
-            return connections[self.via]
-        except (KeyError, TypeError):
-            return {}
-
-    def _cleanup_owned_tunnel(self):
-        """Release the SSH forwarding only if this connector created it."""
-        lease = self._tunnel_lease
-        if lease is None:
-            return
-
-        from unicon.sshutils import sshtunnel
-        sshtunnel.auto_tunnel_release(self.device, lease)
-        self._tunnel_lease = None
 
     def connect(self):
         '''connect
@@ -608,8 +589,7 @@ class Netconf(manager.Manager, BaseConnection):
 
         # remove items
         disregards = ['class', 'model', 'protocol',
-                      'async_mode', 'raise_mode', 'credentials',
-                      'qemu_usernet']
+                      'async_mode', 'raise_mode', 'credentials']
         defaults = {k: v for k, v in defaults.items() if k not in disregards}
 
         # rename ip -> host, cast to str type
@@ -633,13 +613,7 @@ class Netconf(manager.Manager, BaseConnection):
             except Exception:
                 pass
 
-        # Preserve the API-selected remote endpoint before replacing it with
-        # the local end of an optional SSH tunnel.
-        effective_port = getattr(self, 'port', defaults.get('port', 830))
-
-        # Support an optional SSH tunnel. `effective_port` is the remote
-        # endpoint port; ncclient receives the local endpoint from Unicon.
-        tunnel_endpoint = None
+        # support sshtunnel
         if 'sshtunnel' in defaults:
             from unicon.sshutils import sshtunnel
             tunnel_logger = logging.getLogger('unicon.sshutils')
@@ -649,41 +623,21 @@ class Netconf(manager.Manager, BaseConnection):
             if tunnel_logger.getEffectiveLevel() > logging.INFO:
                 tunnel_logger.setLevel(logging.INFO)
             try:
-                connection = self._connection_block()
-                target_address = (connection.get('ip')
-                                  or connection.get('host'))
-                if target_address is None:
-                    raise AttributeError(
-                        'NETCONF SSH tunnel target address is not configured'
-                    )
-
-                lease = sshtunnel.auto_tunnel_add(
-                    self.device,
-                    self.via,
-                    target_address=str(target_address),
-                    target_port=effective_port,
-                    return_lease=True,
-                )
-                if lease is not None:
-                    self._tunnel_lease = lease
-                    defaults['host'] = lease.bind_address
-                    defaults['port'] = lease.port
-                    tunnel_endpoint = (lease.bind_address, lease.port)
+                tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
+                if tunnel_port:
+                    defaults['host'] = self.device.connections[self.via] \
+                                           .sshtunnel.tunnel_ip
+                    defaults['port'] = tunnel_port
             except AttributeError as err:
-                raise AttributeError(
-                    'Cannot add ssh tunnel. Connection {} may not have '
-                    'an ip/host or port.\n{}'.format(self.via, err)
-                )
+                raise AttributeError("Cannot add ssh tunnel. \
+                Connection %s may not have ip/host or port.\n%s"
+                                     % (self.via, err))
             finally:
                 tunnel_logger.removeHandler(tunnel_log_handler)
                 tunnel_logger.setLevel(tunnel_logger_level)
             del defaults['sshtunnel']
 
         defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
-        if tunnel_endpoint:
-            # Runtime connection attributes contain the remote effective port;
-            # keep the local endpoint returned by Unicon for ncclient.
-            defaults['host'], defaults['port'] = tunnel_endpoint
 
         try:
             self.session.connect(**defaults)
@@ -691,23 +645,12 @@ class Netconf(manager.Manager, BaseConnection):
         except Exception:
             if self.session.transport:
                 self.session.close()
-            try:
-                self._cleanup_owned_tunnel()
-            except Exception:
-                self.log.exception('Failed to roll back NETCONF SSH tunnel')
             raise
 
         @atexit.register
         def cleanup():
-            try:
-                if self.session.transport:
-                    self.session.close()
-            except Exception:
-                self.log.exception('Failed to close NETCONF session at exit')
-            try:
-                self._cleanup_owned_tunnel()
-            except Exception:
-                self.log.exception('Failed to remove NETCONF SSH tunnel at exit')
+            if self.session.transport:
+                self.session.close()
 
     def disconnect(self):
         '''disconnect
@@ -715,15 +658,7 @@ class Netconf(manager.Manager, BaseConnection):
         High-level api: closes the NetConf connection.
         '''
 
-        try:
-            self.session.close()
-        except Exception:
-            try:
-                self._cleanup_owned_tunnel()
-            except Exception:
-                self.log.exception('Failed to remove NETCONF SSH tunnel after disconnect error')
-            raise
-        self._cleanup_owned_tunnel()
+        self.session.close()
 
     def subscribe(self, request):
         """ Creates a notification listener and mark it as active """

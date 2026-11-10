@@ -245,227 +245,31 @@ class TestYang(unittest.TestCase):
                                            no_pyats_tasklog=True)
         nc_device._session = MySSHSession()
 
-        def add_tunnel(**kwargs):
+        def add_tunnel(device, via):
             logging.getLogger('unicon.sshutils').info(
-                'Adding local tunnel 127.0.0.1:%s', 123)
+                "Device '%s' connection '%s' via new SSH tunnel %s:%s",
+                device.name, via, '127.0.0.1', 123)
             return 123
 
-        from unicon.sshutils import sshtunnel
-        proxy_connection = Mock()
         try:
             tunnel_logger.setLevel(logging.WARNING)
-            with patch.object(sshtunnel, 'connect_proxy_host'), \
-                 patch.object(sshtunnel, 'add_tunnel',
-                              side_effect=add_tunnel) as tunnel_add, \
-                 patch.object(sshtunnel, 'proxy_connections',
-                              {'proxy': proxy_connection}), \
-                 patch.object(sshtunnel, 'remove_tunnel') as remove_tunnel:
+            with patch('unicon.sshutils.sshtunnel.auto_tunnel_add',
+                       side_effect=add_tunnel):
                 nc_device.connect()
-                self.assertEqual(tunnel_add.call_args.kwargs['target_address'],
-                                 '1.2.3.4')
-                self.assertEqual(tunnel_add.call_args.kwargs['target_port'], 830)
 
-                with open(logfile) as log_file:
-                    log_content = log_file.read()
+            with open(logfile) as log_file:
+                log_content = log_file.read()
 
-                self.assertIn('Adding local tunnel 127.0.0.1:123', log_content)
-                self.assertIn('NETCONF CONNECTED', log_content)
-                self.assertEqual(nc_device.session.connect_kwargs['host'],
-                                 '127.0.0.1')
-                self.assertEqual(nc_device.session.connect_kwargs['port'], 123)
-                self.assertEqual(tunnel_logger.level, logging.WARNING)
-                nc_device.disconnect()
-
-                remove_tunnel.assert_called_once_with(
-                    proxy_conn=proxy_connection,
-                    tunnel_type='local',
-                    tunnel_port=123,
-                    tunnel_ip='127.0.0.1',
-                )
+            self.assertIn('via new SSH tunnel', log_content)
+            self.assertIn('NETCONF CONNECTED', log_content)
+            self.assertEqual(nc_device.session.connect_kwargs['host'],
+                             '127.0.0.1')
+            self.assertEqual(nc_device.session.connect_kwargs['port'], 123)
+            self.assertEqual(tunnel_logger.level, logging.WARNING)
         finally:
             tunnel_logger.setLevel(original_tunnel_level)
             if os.path.exists(logfile):
                 os.remove(logfile)
-
-    def _load_dynamic_netconf_device(self, with_tunnel=True):
-        tunnel_block = (
-            '                sshtunnel:\n'
-            '                    host: proxy\n'
-            '                    tunnel_ip: 127.0.0.1\n'
-            if with_tunnel else ''
-        )
-        yaml = (
-            'devices:\n'
-            '    qemu-uut:\n'
-            '        os: iosxe\n'
-            '        type: qemu\n'
-            '        connections:\n'
-            '            netconf:\n'
-            '                class: yang.connector.Netconf\n'
-            '                protocol: netconf\n'
-            '                ip: 192.0.2.10\n'
-            '                port: 830\n'
-            '                username: admin\n'
-            '                password: admin\n'
-            + tunnel_block
-        )
-        device = loader.load(yaml).devices['qemu-uut']
-        if with_tunnel:
-            device.connections.netconf.sshtunnel = AttrDict(
-                device.connections.netconf.sshtunnel)
-        return device
-
-    def test_runtime_port_and_qemu_metadata_without_tunnel(self):
-        device = self._load_dynamic_netconf_device(with_tunnel=False)
-        nc_device = yang.connector.Netconf(
-            device=device, alias='dynamic', via='netconf', port=8830)
-        nc_device._session = MySSHSession()
-
-        nc_device.connect()
-
-        self.assertEqual(nc_device.session.connect_kwargs['port'], 8830)
-
-    def _netconf_tunnel_lease(self, created=True):
-        from unicon.sshutils import SSHTunnelLease
-
-        return SSHTunnelLease(
-            bind_address='127.0.0.1',
-            port=44001,
-            proxy_host='proxy',
-            via='netconf',
-            created=created,
-            target_address='192.0.2.10',
-            target_port=43613,
-        )
-
-    def test_runtime_effective_port_uses_connection_host_and_tunnel_lease(self):
-        from unicon.sshutils import sshtunnel
-
-        device = self._load_dynamic_netconf_device()
-        nc_device = yang.connector.Netconf(
-            device=device, alias='dynamic', via='netconf', port=43613)
-        nc_device._session = MySSHSession()
-        lease = self._netconf_tunnel_lease()
-
-        with patch.object(
-                sshtunnel, 'auto_tunnel_add', return_value=lease) as add_tunnel:
-            nc_device.connect()
-
-        add_tunnel.assert_called_once_with(
-            device,
-            'netconf',
-            target_address='192.0.2.10',
-            target_port=43613,
-            return_lease=True,
-        )
-        self.assertEqual(nc_device.session.connect_kwargs['host'], '127.0.0.1')
-        self.assertEqual(nc_device.session.connect_kwargs['port'], 44001)
-        self.assertIs(nc_device._tunnel_lease, lease)
-
-    def test_disconnect_releases_tunnel_lease(self):
-        from unicon.sshutils import sshtunnel
-
-        device = self._load_dynamic_netconf_device()
-        nc_device = yang.connector.Netconf(
-            device=device, alias='dynamic', via='netconf', port=43613)
-        nc_device._session = MySSHSession()
-        lease = self._netconf_tunnel_lease()
-
-        with patch.object(
-                sshtunnel, 'auto_tunnel_add', return_value=lease), patch.object(
-                    sshtunnel, 'auto_tunnel_release') as release_tunnel:
-            nc_device.connect()
-            nc_device.disconnect()
-
-        release_tunnel.assert_called_once_with(device, lease)
-        self.assertIsNone(nc_device._tunnel_lease)
-
-    def test_failed_netconf_session_releases_tunnel_lease(self):
-        from unicon.sshutils import sshtunnel
-
-        device = self._load_dynamic_netconf_device()
-        nc_device = yang.connector.Netconf(
-            device=device, alias='dynamic', via='netconf', port=43613)
-        nc_device._session = MySSHSession()
-        nc_device._session.connect = Mock(
-            side_effect=RuntimeError('session failed'))
-        lease = self._netconf_tunnel_lease()
-
-        with patch.object(
-                sshtunnel, 'auto_tunnel_add', return_value=lease), patch.object(
-                    sshtunnel, 'auto_tunnel_release') as release_tunnel:
-            with self.assertRaisesRegex(RuntimeError, 'session failed'):
-                nc_device.connect()
-
-        release_tunnel.assert_called_once_with(device, lease)
-        self.assertIsNone(nc_device._tunnel_lease)
-
-    def test_atexit_cleanup_releases_tunnel_lease(self):
-        from unicon.sshutils import sshtunnel
-
-        device = self._load_dynamic_netconf_device()
-        nc_device = yang.connector.Netconf(
-            device=device, alias='dynamic', via='netconf', port=43613)
-        nc_device._session = MySSHSession()
-        lease = self._netconf_tunnel_lease()
-
-        with patch('atexit.register') as register, patch.object(
-                sshtunnel, 'auto_tunnel_add', return_value=lease), patch.object(
-                    sshtunnel, 'auto_tunnel_release') as release_tunnel:
-            nc_device.connect()
-            cleanup = register.call_args.args[0]
-            cleanup()
-
-        release_tunnel.assert_called_once_with(device, lease)
-        self.assertIsNone(nc_device._tunnel_lease)
-
-    def test_reused_tunnel_lease_is_released_through_unicon_api(self):
-        from unicon.sshutils import sshtunnel
-
-        device = self._load_dynamic_netconf_device()
-        nc_device = yang.connector.Netconf(
-            device=device, alias='dynamic', via='netconf', port=43613)
-        nc_device._session = MySSHSession()
-        lease = self._netconf_tunnel_lease(created=False)
-
-        with patch.object(
-                sshtunnel, 'auto_tunnel_add', return_value=lease), patch.object(
-                    sshtunnel, 'auto_tunnel_release', return_value=False
-                    ) as release_tunnel:
-            nc_device.connect()
-            nc_device.disconnect()
-
-        release_tunnel.assert_called_once_with(device, lease)
-        self.assertIsNone(nc_device._tunnel_lease)
-
-    def test_changed_tunnel_target_is_rejected_by_unicon(self):
-        from unicon.sshutils import SSHTunnelError, sshtunnel
-
-        device = self._load_dynamic_netconf_device()
-        tunnel_config = device.connections.netconf.sshtunnel
-        tunnel_config.connected = True
-        tunnel_config.tunnel_port = 44001
-        tunnel_config.target_address = '192.0.2.10'
-        tunnel_config.target_port = 830
-        nc_device = yang.connector.Netconf(
-            device=device, alias='dynamic', via='netconf', port=43613)
-        nc_device._session = MySSHSession()
-
-        with patch.object(
-                sshtunnel, 'auto_tunnel_add',
-                side_effect=SSHTunnelError('Disconnect the connection')) as add_tunnel:
-            with self.assertRaisesRegex(SSHTunnelError, 'Disconnect the connection'):
-                nc_device.connect()
-
-        add_tunnel.assert_called_once_with(
-            device,
-            'netconf',
-            target_address='192.0.2.10',
-            target_port=43613,
-            return_lease=True,
-        )
-        self.assertEqual(tunnel_config.target_port, 830)
-        self.assertEqual(tunnel_config.tunnel_port, 44001)
 
     def test_ncclient_session_logging(self):
         logfile = tempfile.mktemp(suffix='.log')
