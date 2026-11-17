@@ -321,6 +321,7 @@ class Netconf(manager.Manager, BaseConnection):
         self.log_propagate = kwargs.get('log_propagate', False)
         self.log_stdout = kwargs.get('log_stdout', True)
         self.no_pyats_tasklog = kwargs.get('no_pyats_tasklog', False)
+        self._tunnel_lease = None
 
         # instanciate BaseConnection
         # (could use super...)
@@ -567,6 +568,7 @@ class Netconf(manager.Manager, BaseConnection):
         if self.connected:
             return
 
+        self._cleanup_owned_tunnel()
         self.configure_logging()
 
         if not self.session.is_alive():
@@ -613,6 +615,8 @@ class Netconf(manager.Manager, BaseConnection):
             except Exception:
                 pass
 
+        defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
+
         # support sshtunnel
         if 'sshtunnel' in defaults:
             from unicon.sshutils import sshtunnel
@@ -623,11 +627,21 @@ class Netconf(manager.Manager, BaseConnection):
             if tunnel_logger.getEffectiveLevel() > logging.INFO:
                 tunnel_logger.setLevel(logging.INFO)
             try:
-                tunnel_port = sshtunnel.auto_tunnel_add(self.device, self.via)
-                if tunnel_port:
-                    defaults['host'] = self.device.connections[self.via] \
-                                           .sshtunnel.tunnel_ip
-                    defaults['port'] = tunnel_port
+                target_address = defaults.get('host')
+                if target_address is None:
+                    raise AttributeError(
+                        'NETCONF SSH tunnel target address is not configured')
+                lease = sshtunnel.auto_tunnel_add(
+                    self.device,
+                    self.via,
+                    target_address=str(target_address),
+                    target_port=defaults['port'],
+                    return_lease=True,
+                )
+                self._tunnel_lease = lease
+                if lease is not None:
+                    defaults['host'] = lease.bind_address
+                    defaults['port'] = lease.port
             except AttributeError as err:
                 raise AttributeError("Cannot add ssh tunnel. \
                 Connection %s may not have ip/host or port.\n%s"
@@ -637,20 +651,40 @@ class Netconf(manager.Manager, BaseConnection):
                 tunnel_logger.setLevel(tunnel_logger_level)
             del defaults['sshtunnel']
 
-        defaults = {k: getattr(self, k, v) for k, v in defaults.items()}
-
         try:
             self.session.connect(**defaults)
             self.log.info('NETCONF CONNECTED')
         except Exception:
-            if self.session.transport:
-                self.session.close()
+            try:
+                if self.session.transport:
+                    self.session.close()
+            except Exception:
+                self.log.warning(
+                    'Could not close failed NETCONF session', exc_info=True)
+            try:
+                self._cleanup_owned_tunnel()
+            except Exception:
+                self.log.warning(
+                    'Could not release failed NETCONF tunnel', exc_info=True)
             raise
 
         @atexit.register
         def cleanup():
-            if self.session.transport:
-                self.session.close()
+            try:
+                if self.session.transport:
+                    self.session.close()
+            finally:
+                self._cleanup_owned_tunnel()
+
+    def _cleanup_owned_tunnel(self):
+        """Release this connection's forwarding, preserving borrowed tunnels."""
+        lease = self._tunnel_lease
+        if lease is None:
+            return
+        if lease.created:
+            from unicon.sshutils import sshtunnel
+            sshtunnel.auto_tunnel_release(self.device, lease)
+        self._tunnel_lease = None
 
     def disconnect(self):
         '''disconnect
@@ -658,7 +692,10 @@ class Netconf(manager.Manager, BaseConnection):
         High-level api: closes the NetConf connection.
         '''
 
-        self.session.close()
+        try:
+            self.session.close()
+        finally:
+            self._cleanup_owned_tunnel()
 
     def subscribe(self, request):
         """ Creates a notification listener and mark it as active """
