@@ -5,6 +5,7 @@ import logging
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
 from ncclient import manager
 from ncclient import transport
 from ncclient.devices.default import DefaultDeviceHandler
@@ -242,20 +243,30 @@ class TestYang(unittest.TestCase):
                                            via='netconf',
                                            logfile=logfile,
                                            log_stdout=False,
-                                           no_pyats_tasklog=True)
+                                           no_pyats_tasklog=True,
+                                           port=8830)
         nc_device._session = MySSHSession()
 
-        def add_tunnel(device, via):
+        lease = SimpleNamespace(
+            bind_address='127.0.0.1', port=123, created=True,
+        )
+
+        def add_tunnel(device, via, **kwargs):
             logging.getLogger('unicon.sshutils').info(
                 "Device '%s' connection '%s' via new SSH tunnel %s:%s",
                 device.name, via, '127.0.0.1', 123)
-            return 123
+            return lease
+
+        tunnel_api = SimpleNamespace(
+            auto_tunnel_add=Mock(side_effect=add_tunnel),
+            auto_tunnel_release=Mock(return_value=True),
+        )
 
         try:
             tunnel_logger.setLevel(logging.WARNING)
-            with patch('unicon.sshutils.sshtunnel.auto_tunnel_add',
-                       side_effect=add_tunnel):
+            with patch('unicon.sshutils.sshtunnel', tunnel_api):
                 nc_device.connect()
+                nc_device.disconnect()
 
             with open(logfile) as log_file:
                 log_content = log_file.read()
@@ -266,6 +277,11 @@ class TestYang(unittest.TestCase):
                              '127.0.0.1')
             self.assertEqual(nc_device.session.connect_kwargs['port'], 123)
             self.assertEqual(tunnel_logger.level, logging.WARNING)
+            tunnel_api.auto_tunnel_add.assert_called_once_with(
+                device, 'netconf', target_address='1.2.3.4',
+                target_port=8830, return_lease=True)
+            tunnel_api.auto_tunnel_release.assert_called_once_with(
+                device, lease)
         finally:
             tunnel_logger.setLevel(original_tunnel_level)
             if os.path.exists(logfile):
@@ -496,6 +512,152 @@ class TestYang(unittest.TestCase):
         self.assertRaises(Exception,
                           self.nc_device.execute,
                           'close')
+
+
+class TestNetconfTunnelLifecycle(unittest.TestCase):
+
+    def setUp(self):
+        testbed = loader.load('''devices:
+  uut:
+    os: iosxe
+    type: router
+    connections:
+      netconf:
+        class: yang.connector.Netconf
+        protocol: netconf
+        ip: 192.0.2.10
+        port: 830
+        sshtunnel:
+          host: proxy
+''')
+        self.device = testbed.devices.uut
+        self.tunnel_api = SimpleNamespace(
+            auto_tunnel_add=Mock(),
+            auto_tunnel_release=Mock(return_value=True),
+        )
+        patcher = patch('unicon.sshutils.sshtunnel', self.tunnel_api)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _connection(self, port=8830, created=True):
+        lease = SimpleNamespace(
+            bind_address='127.0.0.2', port=23456, created=created,
+            target_address='192.0.2.10', target_port=port,
+        )
+        self.tunnel_api.auto_tunnel_add.return_value = lease
+        descriptor, logfile = tempfile.mkstemp(suffix='.log')
+        os.close(descriptor)
+        self.addCleanup(os.remove, logfile)
+        connection = yang.connector.Netconf(
+            device=self.device, alias='nc', via='netconf', port=port,
+            logfile=logfile, log_stdout=False, no_pyats_tasklog=True,
+        )
+        connection._session = MySSHSession()
+        self.addCleanup(connection.disconnect)
+        return connection, lease
+
+    def test_runtime_target_and_local_endpoint_stay_separate(self):
+        for effective_port in (8830, 43613):
+            with self.subTest(effective_port=effective_port):
+                connection, lease = self._connection(port=effective_port)
+                connection.connect()
+
+                self.tunnel_api.auto_tunnel_add.assert_called_with(
+                    self.device, 'netconf', target_address='192.0.2.10',
+                    target_port=effective_port, return_lease=True,
+                )
+                self.assertEqual(self.device.connections.netconf.port, 830)
+                self.assertEqual(
+                    connection.session.connect_kwargs['host'], '127.0.0.2')
+                self.assertEqual(
+                    connection.session.connect_kwargs['port'], 23456)
+                self.assertNotIn(
+                    'sshtunnel', connection.session.connect_kwargs)
+                connection.disconnect()
+                self.tunnel_api.auto_tunnel_release.assert_called_with(
+                    self.device, lease)
+
+    def test_failed_connect_releases_owned_tunnel(self):
+        connection, lease = self._connection()
+        original_error = RuntimeError('NETCONF handshake failed')
+        connection.session.connect = Mock(side_effect=original_error)
+
+        with self.assertRaises(RuntimeError) as raised:
+            connection.connect()
+
+        self.assertIs(raised.exception, original_error)
+        self.tunnel_api.auto_tunnel_release.assert_called_once_with(
+            self.device, lease)
+        self.assertIsNone(connection._tunnel_lease)
+
+    def test_release_failure_preserves_connect_error_and_can_be_retried(self):
+        connection, lease = self._connection()
+        original_error = RuntimeError('NETCONF handshake failed')
+        connection.session.connect = Mock(side_effect=original_error)
+        self.tunnel_api.auto_tunnel_release.side_effect = RuntimeError(
+            'temporary release failure')
+
+        with self.assertRaises(RuntimeError) as raised:
+            connection.connect()
+
+        self.assertIs(raised.exception, original_error)
+        self.assertIs(connection._tunnel_lease, lease)
+        self.tunnel_api.auto_tunnel_release.side_effect = None
+        connection.disconnect()
+        self.assertIsNone(connection._tunnel_lease)
+        self.assertEqual(self.tunnel_api.auto_tunnel_release.call_count, 2)
+
+    def test_disconnect_releases_owned_tunnel_once(self):
+        connection, lease = self._connection()
+        connection.connect()
+        connection.disconnect()
+        connection.disconnect()
+
+        self.tunnel_api.auto_tunnel_release.assert_called_once_with(
+            self.device, lease)
+
+    def test_disconnect_preserves_borrowed_tunnel(self):
+        connection, _ = self._connection(created=False)
+        connection.connect()
+        connection.disconnect()
+
+        self.tunnel_api.auto_tunnel_release.assert_not_called()
+
+    def test_failed_connect_preserves_borrowed_tunnel(self):
+        connection, _ = self._connection(created=False)
+        connection.session.connect = Mock(
+            side_effect=RuntimeError('NETCONF handshake failed'))
+
+        with self.assertRaisesRegex(RuntimeError, 'NETCONF handshake failed'):
+            connection.connect()
+
+        self.tunnel_api.auto_tunnel_release.assert_not_called()
+
+    def test_exit_cleanup_releases_owned_tunnel_once(self):
+        connection, lease = self._connection()
+        with patch('yang.connector.netconf.atexit.register') as register:
+            connection.connect()
+
+        cleanup = register.call_args.args[0]
+        cleanup()
+        cleanup()
+
+        self.assertFalse(connection.connected)
+        self.tunnel_api.auto_tunnel_release.assert_called_once_with(
+            self.device, lease)
+
+    def test_target_mismatch_does_not_replace_shared_tunnel(self):
+        connection, _ = self._connection()
+        connection.session.connect = Mock()
+        self.tunnel_api.auto_tunnel_add.side_effect = RuntimeError(
+            'existing SSH tunnel targets a different endpoint')
+
+        with self.assertRaisesRegex(RuntimeError, 'different endpoint'):
+            connection.connect()
+
+        connection.session.connect.assert_not_called()
+        self.tunnel_api.auto_tunnel_release.assert_not_called()
+        self.assertIsNone(connection._tunnel_lease)
 
 
 if __name__ == '__main__':
