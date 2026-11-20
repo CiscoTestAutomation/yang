@@ -394,18 +394,17 @@ class Gnmi(BaseConnection):
             self.log.info("Connecting insecure channel")
 
         self.service = proto.gnmi_pb2_grpc.gNMIStub(self.channel)
-
-
-        resp = self.capabilities()
-        if resp:
-            log.info('\ngNMI version: {0} supported encodings: {1}\n\n'.format(
-                resp.gNMI_version,
-                [proto.gnmi_pb2.Encoding.Name(i) for i in resp.supported_encodings]))
-            log.info(banner('gNMI CONNECTED'))
-        else:
-            log.info(banner('gNMI Capabilities not returned'))
-            self.disconnect()
-            raise gNMIException('Connection not successful')
+        if not skip_verify:
+            resp = self.capabilities()
+            if resp:
+                log.info('\ngNMI version: {0} supported encodings: {1}\n\n'.format(
+                    resp.gNMI_version,
+                    [proto.gnmi_pb2.Encoding.Name(i) for i in resp.supported_encodings]))
+                log.info(banner('gNMI CONNECTED'))
+            else:
+                log.info(banner('gNMI Capabilities not returned'))
+                self.disconnect()
+                raise gNMIException('Connection not successful')
 
     def set(self, request):
         """Gnmi SET method.
